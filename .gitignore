@@ -30,16 +30,22 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# local environment variables
+# local environment variables & secrets
 .env*.local
 .env.development.local
 .env.test.local
 .env.production.local
 
+# MCP server configurations & secrets
+mcp_config.json
+.agents/mcp_config.json
+.mcp.json
+
 # IDE & platform configs
 .vercel
 .vscode/
 .idea/
+.gemini/
 
 # typescript
 *.tsbuildinfo

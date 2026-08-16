@@ -93,9 +93,12 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
 
   return (
     <div className="space-y-2">
-      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 font-sans">
-        Product Image <span className="text-slate-400 font-normal">(Auto-compressed to ≤ 500KB)</span>
-      </label>
+      <div className="flex items-center justify-between">
+        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 font-sans">
+          Product Image <span className="text-slate-400 font-normal text-[11px]">(Optional)</span>
+        </label>
+        <span className="text-[10px] text-slate-400 font-mono">Max 500KB • WebP/JPG/PNG</span>
+      </div>
 
       <input
         ref={fileInputRef}
@@ -185,10 +188,10 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
               </div>
               <div>
                 <p className="text-xs font-bold text-slate-800 font-sans">
-                  Click to upload or drag & drop garment picture
+                  Click to upload or drag & drop garment picture <span className="text-slate-400 font-normal">(Optional)</span>
                 </p>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  PNG, JPG, or WebP • Automatic client-side compression to strictly ≤ 500KB
+                  Optional • PNG, JPG, or WebP (Auto-compressed to ≤ 500KB)
                 </p>
               </div>
             </>
