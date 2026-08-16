@@ -3,6 +3,24 @@ export type PaymentMethod = 'Cash' | 'Bank' | 'Other';
 export type RegisterSessionStatus = 'OPEN' | 'CLOSED';
 export type CashMovementType = 'CASH_SALE' | 'CUSTOMER_PAYMENT' | 'EXPENSE' | 'MANUAL_DEPOSIT' | 'MANUAL_WITHDRAWAL';
 
+export type FixedSize = 'Small' | 'Medium' | 'Large' | 'Standard' | 'XL';
+export const FIXED_SIZES: FixedSize[] = ['Small', 'Medium', 'Large', 'Standard', 'XL'];
+
+export interface ProductVariant {
+  id: string;
+  product_id: string;
+  color: string;
+  size: FixedSize;
+  stock_quantity: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface VariantMatrixRow {
+  color: string;
+  sizes: Record<FixedSize, number>;
+}
+
 export interface Product {
   id: string;
   product_code: string;
@@ -15,7 +33,8 @@ export interface Product {
   image_url?: string | null;
   created_at: string;
   updated_at: string;
-  // Computed property
+  // Variant relationships & computed properties
+  variants?: ProductVariant[];
   unit_cost?: number;
 }
 
@@ -37,6 +56,7 @@ export interface OrderItem {
   id: string;
   order_id: string;
   product_id: string;
+  variant_id?: string | null;
   product_code_snapshot: string;
   product_name_snapshot: string;
   size_snapshot?: string | null;
@@ -70,15 +90,15 @@ export interface Order {
   remaining_amount: number;
   payment_status: PaymentStatus;
   notes?: string | null;
-  items?: OrderItem[];
-  payments_history?: OrderPaymentRecord[];
   idempotency_key?: string | null;
-  is_voided?: boolean;
+  is_voided: boolean;
   voided_at?: string | null;
   void_reason?: string | null;
   voided_by?: string | null;
   created_at: string;
   updated_at: string;
+  items?: OrderItem[];
+  payments_history?: OrderPaymentRecord[];
 }
 
 export interface PaymentAllocation {
@@ -98,34 +118,37 @@ export interface Payment {
   payment_date: string;
   payment_method: PaymentMethod;
   note?: string | null;
-  allocations?: PaymentAllocation[];
   idempotency_key?: string | null;
   is_voided?: boolean;
   voided_at?: string | null;
   void_reason?: string | null;
   voided_by?: string | null;
+  allocations?: PaymentAllocation[];
   created_at: string;
 }
 
 export interface BusinessSettings {
+  id?: string;
   business_name: string;
   phone: string;
   email?: string | null;
   address: string;
-  tax_rate_percent?: number;
+  tax_number?: string | null;
+  tax_rate_percent?: number | null;
+  cashier_name?: string | null;
   currency_symbol: string;
-  cashier_name?: string;
+  invoice_footer_note?: string | null;
+  updated_at?: string;
 }
 
 export interface AuditLog {
   id: string;
-  user_id?: string;
-  user_name?: string;
   entity_type: string;
   entity_id: string;
   action: string;
-  metadata?: Record<string, any>;
-  ip_address?: string;
+  user_id?: string | null;
+  user_name?: string | null;
+  metadata?: any;
   created_at: string;
 }
 
@@ -160,6 +183,7 @@ export interface RegisterCashMovement {
 
 export interface CreateOrderItemInput {
   product_id: string;
+  variant_id?: string | null;
   quantity: number;
   selling_price_per_unit: number;
 }

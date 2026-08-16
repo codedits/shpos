@@ -20,55 +20,80 @@ import {
   History,
   AlertTriangle,
   Layers,
+  Ban,
 } from 'lucide-react';
 import { formatDatePKT } from '@/lib/dateUtils';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import { useToast } from '@/context/ToastContext';
 
 export default function InvoiceDetailPage() {
   const params = useParams();
   const router = useRouter();
   const invoiceParam = params?.id as string;
 
+  const toast = useToast();
   const [order, setOrder] = useState<Order | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [settings, setSettings] = useState<BusinessSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [formatMode, setFormatMode] = useState<'a4' | 'thermal'>('a4');
+  const [voidModalOpen, setVoidModalOpen] = useState(false);
+  const [voiding, setVoiding] = useState(false);
+
+  const loadInvoice = async () => {
+    if (!invoiceParam) return;
+    try {
+      setLoading(true);
+      const [ord, setts] = await Promise.all([
+        wholesaleService.getOrderById(invoiceParam),
+        wholesaleService.getSettings(),
+      ]);
+
+      if (!ord) {
+        setErrorMessage(`Invoice "${invoiceParam}" not found.`);
+        return;
+      }
+
+      setOrder(ord);
+      setSettings(setts);
+
+      if (ord.customer_id) {
+        const cust = await wholesaleService.getCustomerById(ord.customer_id);
+        setCustomer(cust);
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    async function loadInvoice() {
-      if (!invoiceParam) return;
-      try {
-        setLoading(true);
-        const [ord, setts] = await Promise.all([
-          wholesaleService.getOrderById(invoiceParam),
-          wholesaleService.getSettings(),
-        ]);
-
-        if (!ord) {
-          setErrorMessage(`Invoice "${invoiceParam}" not found.`);
-          return;
-        }
-
-        setOrder(ord);
-        setSettings(setts);
-
-        if (ord.customer_id) {
-          const cust = await wholesaleService.getCustomerById(ord.customer_id);
-          setCustomer(cust);
-        }
-      } catch (err: any) {
-        setErrorMessage(err.message);
-      } finally {
-        setLoading(false);
-      }
-    }
     loadInvoice();
   }, [invoiceParam]);
 
   const handlePrint = () => {
     if (typeof window !== 'undefined') {
       window.print();
+    }
+  };
+
+  const handleConfirmVoidOrder = async () => {
+    if (!order) return;
+    try {
+      setVoiding(true);
+      await wholesaleService.voidOrder(order.id, 'Administrative cancellation requested from voucher');
+      toast.success(
+        'Invoice Voided',
+        `Invoice ${order.invoice_number} cancelled. Stock successfully restored.`
+      );
+      setVoidModalOpen(false);
+      await loadInvoice();
+    } catch (err: any) {
+      toast.error('Could Not Void Invoice', err.message);
+    } finally {
+      setVoiding(false);
     }
   };
 
@@ -180,6 +205,17 @@ export default function InvoiceDetailPage() {
         </div>
 
         <div className="flex items-center space-x-2">
+          {!order.is_voided && (
+            <button
+              onClick={() => setVoidModalOpen(true)}
+              className="btn-press px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs rounded-lg flex items-center space-x-1.5 transition shadow-xs"
+              title="Cancel and void this invoice"
+            >
+              <Ban className="w-3.5 h-3.5" />
+              <span>Void Voucher</span>
+            </button>
+          )}
+
           {!order.is_voided && currentInvoiceRemaining > 0 && (
             <Link
               href={`/payments/new?customer_id=${order.customer_id}&order_id=${order.id}`}
@@ -559,6 +595,34 @@ export default function InvoiceDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Screen-Centered "Are You Sure?" Confirmation Modal for Voiding Invoice */}
+      <ConfirmModal
+        isOpen={voidModalOpen}
+        title={`Void Invoice ${order?.invoice_number}?`}
+        message={`Are you sure you want to cancel and void sales invoice ${order?.invoice_number} for customer ${customer?.name || 'Walk-in Buyer'}?`}
+        actionDetails={[
+          {
+            label: 'Inventory Return',
+            description: 'All garment quantities in this order will be automatically added back to stock inventory.',
+          },
+          {
+            label: 'Customer Ledger Balance',
+            description: `This invoice's balance (Rs. ${(order?.remaining_amount || 0).toLocaleString()}) will be removed from customer outstanding debt.`,
+          },
+          {
+            label: 'Audit & Compliance',
+            description: 'The voucher will be marked VOIDED and permanently watermarked with cancellation timestamp.',
+          },
+        ]}
+        warningNote="Irreversible Action: Once voided, this invoice cannot be restored or re-opened."
+        confirmText="Yes, Void Invoice"
+        cancelText="Keep Invoice Active"
+        variant="danger"
+        isLoading={voiding}
+        onConfirm={handleConfirmVoidOrder}
+        onCancel={() => setVoidModalOpen(false)}
+      />
     </div>
   );
 }

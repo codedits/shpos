@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { wholesaleService } from '@/services/wholesaleService';
-import { Product, Customer, Order, BusinessSettings } from '@/types/wholesale';
+import { Product, Customer, Order, Payment, BusinessSettings } from '@/types/wholesale';
 import {
   ArrowUpRight,
   ShoppingCart,
@@ -24,7 +24,7 @@ import {
   User,
   Calendar,
   Layers,
-  Sparkles,
+  Inbox,
 } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
@@ -46,6 +46,7 @@ export default function DashboardPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [settings, setSettings] = useState<BusinessSettings>({
     business_name: 'Buraq Collection',
     phone: '',
@@ -55,22 +56,24 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [clearModalOpen, setClearModalOpen] = useState(false);
-  const [timeRange, setTimeRange] = useState<'today' | 'month' | 'all'>('month');
+  const [timeRange, setTimeRange] = useState<'month' | 'today' | 'all'>('month');
 
   const loadData = async (forceRefresh = false) => {
     try {
       if (forceRefresh) setRefreshing(true);
       else setLoading(true);
 
-      const [pData, cData, oData, sData] = await Promise.all([
+      const [pData, cData, oData, payData, sData] = await Promise.all([
         wholesaleService.getProducts(forceRefresh),
         wholesaleService.getCustomers(forceRefresh),
         wholesaleService.getOrders(forceRefresh),
+        wholesaleService.getPayments(forceRefresh),
         wholesaleService.getSettings().catch(() => null),
       ]);
       setProducts(pData);
       setCustomers(cData);
       setOrders(oData);
+      setPayments(payData);
       if (sData) setSettings(sData);
     } finally {
       setLoading(false);
@@ -82,12 +85,54 @@ export default function DashboardPage() {
     loadData();
   }, []);
 
-  // Filter active (non-voided) orders
-  const activeOrders = useMemo(() => orders.filter((o) => !o.is_voided), [orders]);
+  // Filter active (non-voided) orders and payments
+  const allActiveOrders = useMemo(() => orders.filter((o) => !o.is_voided), [orders]);
+  const allActivePayments = useMemo(() => payments.filter((p) => !p.is_voided), [payments]);
+
+  // Helper to check if a date is within current month
+  const isThisMonth = (dateStr: string) => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    const now = new Date();
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  };
+
+  // Filtered orders based on selected timeframe
+  const filteredOrders = useMemo(() => {
+    if (timeRange === 'today') {
+      return allActiveOrders.filter((o) => isTodayPKT(o.order_date));
+    }
+    if (timeRange === 'month') {
+      return allActiveOrders.filter((o) => isThisMonth(o.order_date));
+    }
+    return allActiveOrders;
+  }, [allActiveOrders, timeRange]);
+
+  // Filtered payments based on selected timeframe
+  const filteredPayments = useMemo(() => {
+    if (timeRange === 'today') {
+      return allActivePayments.filter((p) => isTodayPKT(p.payment_date));
+    }
+    if (timeRange === 'month') {
+      return allActivePayments.filter((p) => isThisMonth(p.payment_date));
+    }
+    return allActivePayments;
+  }, [allActivePayments, timeRange]);
+
+  // Metrics calculated dynamically
+  const totalSalesRevenue = useMemo(
+    () => filteredOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0),
+    [filteredOrders]
+  );
+
+  const totalCashCollected = useMemo(
+    () => filteredPayments.reduce((sum, p) => sum + (p.amount || 0), 0),
+    [filteredPayments]
+  );
 
   const todayOrders = useMemo(
-    () => activeOrders.filter((o) => isTodayPKT(o.order_date)),
-    [activeOrders]
+    () => allActiveOrders.filter((o) => isTodayPKT(o.order_date)),
+    [allActiveOrders]
   );
 
   const todaySales = useMemo(
@@ -95,24 +140,9 @@ export default function DashboardPage() {
     [todayOrders]
   );
 
-  const totalSalesRevenue = useMemo(
-    () => activeOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0),
-    [activeOrders]
-  );
-
-  const totalCashCollected = useMemo(
-    () => activeOrders.reduce((sum, o) => sum + (o.amount_paid || 0), 0),
-    [activeOrders]
-  );
-
   const totalOutstanding = useMemo(
     () => customers.reduce((sum, c) => sum + (c.total_outstanding || 0), 0),
     [customers]
-  );
-
-  const lowStockProducts = useMemo(
-    () => products.filter((p) => p.stock_quantity <= 10),
-    [products]
   );
 
   const topDebtors = useMemo(
@@ -126,12 +156,12 @@ export default function DashboardPage() {
 
   const recentOrders = useMemo(() => orders.slice(0, 6), [orders]);
 
-  // Generate 7-day revenue chart data
+  // 7-day Revenue Bar Chart (Computed 100% from real orders)
   const revenueChartData = useMemo(() => {
     const days: { [key: string]: number } = {};
     const now = new Date();
 
-    // Initialize past 7 days
+    // Initialize past 7 days with zero
     for (let i = 6; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
@@ -139,7 +169,8 @@ export default function DashboardPage() {
       days[label] = 0;
     }
 
-    activeOrders.forEach((o) => {
+    // Populate with real non-voided order totals
+    allActiveOrders.forEach((o) => {
       const d = new Date(o.order_date);
       const label = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
       if (days[label] !== undefined) {
@@ -147,50 +178,41 @@ export default function DashboardPage() {
       }
     });
 
-    const result = Object.entries(days).map(([day, amount]) => ({
+    return Object.entries(days).map(([day, amount]) => ({
       day,
       amount,
     }));
+  }, [allActiveOrders]);
 
-    // If total is 0, give sample proportional values for aesthetics
-    const hasData = result.some((r) => r.amount > 0);
-    if (!hasData) {
-      return [
-        { day: '10 Aug', amount: 15000 },
-        { day: '11 Aug', amount: 8500 },
-        { day: '12 Aug', amount: 22000 },
-        { day: '13 Aug', amount: 12000 },
-        { day: '14 Aug', amount: 18500 },
-        { day: '15 Aug', amount: 25000 },
-        { day: '16 Aug', amount: todaySales || 19000 },
-      ];
-    }
+  const hasChartRevenue = useMemo(
+    () => revenueChartData.some((r) => r.amount > 0),
+    [revenueChartData]
+  );
 
-    return result;
-  }, [activeOrders, todaySales]);
-
-  // Category / Stock breakdown chart data
+  // Real Inventory Stock Breakdown Chart (Computed 100% from products catalog)
   const categoryChartData = useMemo(() => {
-    const inStockCount = products.filter((p) => p.stock_quantity > 10).length;
-    const lowStockCount = products.filter((p) => p.stock_quantity > 0 && p.stock_quantity <= 10).length;
-    const outOfStockCount = products.filter((p) => p.stock_quantity <= 0).length;
-    const total = products.length;
+    const inStock = products.filter((p) => p.is_active !== false && p.stock_quantity > 10).length;
+    const lowStock = products.filter((p) => p.is_active !== false && p.stock_quantity > 0 && p.stock_quantity <= 10).length;
+    const outOfStock = products.filter((p) => p.is_active !== false && p.stock_quantity <= 0).length;
 
-    if (total === 0) {
-      return [
-        { name: 'Casual Wear', value: 35, color: '#3b82f6' },
-        { name: 'Bridal / Formal', value: 25, color: '#f59e0b' },
-        { name: 'Cotton Lawn', value: 25, color: '#10b981' },
-        { name: 'Accessories', value: 15, color: '#8b5cf6' },
-      ];
-    }
-
-    return [
-      { name: 'Ample Stock (>10)', value: inStockCount || 1, color: '#3b82f6' },
-      { name: 'Low Stock (≤10)', value: lowStockCount || 1, color: '#f59e0b' },
-      { name: 'Out of Stock', value: outOfStockCount || 1, color: '#ef4444' },
+    const data = [
+      { name: 'In Stock (>10 pcs)', count: inStock, color: '#3b82f6' },
+      { name: 'Low Stock (1-10 pcs)', count: lowStock, color: '#f59e0b' },
+      { name: 'Out of Stock (0 pcs)', count: outOfStock, color: '#ef4444' },
     ];
+
+    return data;
   }, [products]);
+
+  const totalProductItems = useMemo(
+    () => products.filter((p) => p.is_active !== false).length,
+    [products]
+  );
+
+  const totalGarmentPieces = useMemo(
+    () => products.filter((p) => p.is_active !== false).reduce((sum, p) => sum + (p.stock_quantity || 0), 0),
+    [products]
+  );
 
   const handleConfirmClear = async () => {
     try {
@@ -223,6 +245,8 @@ export default function DashboardPage() {
     return colors[Math.abs(hash) % colors.length];
   };
 
+  const timeframeLabel = timeRange === 'today' ? 'today' : timeRange === 'month' ? 'this month' : 'all time';
+
   return (
     <AppLayout>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 w-full font-sans">
@@ -234,7 +258,7 @@ export default function DashboardPage() {
               <span className="inline-block animate-bounce">👋</span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
-              This is what&apos;s happening in your wholesale store this month.
+              Live overview of sales, orders, and ledger collections for <span className="font-semibold text-slate-700">{timeframeLabel}</span>.
             </p>
           </div>
 
@@ -303,7 +327,7 @@ export default function DashboardPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <span className="text-xs font-semibold text-blue-100 uppercase tracking-wider block">
-                    Total Revenue
+                    Sales Revenue ({timeframeLabel})
                   </span>
                   <div className="mt-4">
                     <h3 className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-white">
@@ -324,10 +348,10 @@ export default function DashboardPage() {
 
               <div className="mt-6 pt-3 border-t border-white/15 flex items-center justify-between">
                 <span className="text-xs text-blue-100/90 font-mono">
-                  Today: Rs. {todaySales.toLocaleString()}
+                  {timeRange === 'today' ? `${filteredOrders.length} orders today` : `Today: Rs. ${todaySales.toLocaleString()}`}
                 </span>
                 <span className="px-2.5 py-0.5 rounded-full bg-white/20 backdrop-blur text-[11px] font-bold text-white font-mono">
-                  ↑ Active
+                  {filteredOrders.length > 0 ? '✓ Active' : '0 Orders'}
                 </span>
               </div>
             </div>
@@ -337,11 +361,11 @@ export default function DashboardPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                    Total Orders
+                    Orders Booked ({timeframeLabel})
                   </span>
                   <div className="mt-4">
                     <h3 className="text-2xl sm:text-3xl font-extrabold font-mono text-slate-900 tracking-tight">
-                      {activeOrders.length}
+                      {filteredOrders.length}
                     </h3>
                   </div>
                 </div>
@@ -358,24 +382,24 @@ export default function DashboardPage() {
 
               <div className="mt-6 pt-3 border-t border-slate-100 flex items-center justify-between">
                 <span className="text-xs text-slate-500 font-mono">
-                  {todayOrders.length} booked today
+                  {filteredOrders.filter((o) => o.payment_status === 'PAID').length} fully paid
                 </span>
-                <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold font-mono">
-                  {activeOrders.length > 0 ? '✓ Live' : '0 Orders'}
+                <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold font-mono">
+                  {filteredOrders.filter((o) => o.payment_status === 'PARTIALLY_PAID').length} partial
                 </span>
               </div>
             </div>
 
-            {/* Box 3: Total Visitors / Client Accounts (Light Rounded Block with Fine Arrow) */}
+            {/* Box 3: Outstanding Receivables (Light Rounded Block with Fine Arrow) */}
             <div className="rounded-3xl bg-white border border-slate-200/80 p-6 shadow-xs hover:shadow-md transition flex flex-col justify-between group">
               <div className="flex items-start justify-between">
                 <div>
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                    Client Accounts
+                    Market Receivables
                   </span>
                   <div className="mt-4">
-                    <h3 className="text-2xl sm:text-3xl font-extrabold font-mono text-slate-900 tracking-tight">
-                      {customers.length}
+                    <h3 className={`text-2xl sm:text-3xl font-extrabold font-mono tracking-tight ${totalOutstanding > 0 ? 'text-rose-700' : 'text-slate-900'}`}>
+                      Rs. {totalOutstanding.toLocaleString('en-US', { minimumFractionDigits: 0 })}
                     </h3>
                   </div>
                 </div>
@@ -392,20 +416,20 @@ export default function DashboardPage() {
 
               <div className="mt-6 pt-3 border-t border-slate-100 flex items-center justify-between">
                 <span className="text-xs text-slate-500 font-mono">
-                  {customers.filter((c) => (c.total_outstanding || 0) > 0).length} with balance
+                  {topDebtors.length} accounts with balance
                 </span>
-                <span className="px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 text-[10px] font-bold font-mono">
-                  Accounts
+                <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 text-[10px] font-bold font-mono">
+                  {totalOutstanding > 0 ? 'Pending' : 'Cleared'}
                 </span>
               </div>
             </div>
 
-            {/* Box 4: Net Cash Collected / Paid (Light Rounded Block with Fine Arrow) */}
+            {/* Box 4: Cash Collected (Light Rounded Block with Fine Arrow) */}
             <div className="rounded-3xl bg-white border border-slate-200/80 p-6 shadow-xs hover:shadow-md transition flex flex-col justify-between group">
               <div className="flex items-start justify-between">
                 <div>
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                    Cash Collected
+                    Cash Realized ({timeframeLabel})
                   </span>
                   <div className="mt-4">
                     <h3 className="text-2xl sm:text-3xl font-extrabold font-mono text-emerald-700 tracking-tight">
@@ -426,7 +450,7 @@ export default function DashboardPage() {
 
               <div className="mt-6 pt-3 border-t border-slate-100 flex items-center justify-between">
                 <span className="text-xs text-slate-500 font-mono">
-                  Remaining: Rs. {totalOutstanding.toLocaleString()}
+                  {filteredPayments.length} receipts logged
                 </span>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold font-mono">
                   ↑ Realized
@@ -442,21 +466,27 @@ export default function DashboardPage() {
                 <h3 className="text-base font-extrabold text-slate-900 tracking-tight font-heading">
                   Revenue
                 </h3>
-                <p className="text-xs text-slate-400 font-medium">Daily & Weekly Sales Activity</p>
+                <p className="text-xs text-slate-400 font-medium">Daily Sales (Past 7 Days)</p>
               </div>
 
               {/* Fine Arrow Circle Button */}
               <Link
                 href="/orders"
                 className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 transition hover:scale-105"
-                title="View Sales Analytics"
+                title="View Sales Orders"
               >
                 <ArrowUpRight className="w-5 h-5 stroke-[2.2]" />
               </Link>
             </div>
 
             {/* Recharts Bar Chart with Rounded Blue Bars */}
-            <div className="h-56 w-full pt-4">
+            <div className="h-56 w-full pt-4 relative">
+              {!hasChartRevenue && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/70 backdrop-blur-2xs z-10 text-slate-400 text-xs">
+                  <Inbox className="w-8 h-8 text-slate-300 mb-1" />
+                  <span>No sales recorded in the past 7 days</span>
+                </div>
+              )}
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={revenueChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <XAxis
@@ -471,7 +501,7 @@ export default function DashboardPage() {
                     fontSize={10}
                     tickLine={false}
                     axisLine={false}
-                    tickFormatter={(val) => `${(val / 1000).toFixed(0)}k`}
+                    tickFormatter={(val) => val >= 1000 ? `${(val / 1000).toFixed(0)}k` : `${val}`}
                   />
                   <Tooltip
                     contentStyle={{
@@ -496,11 +526,11 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* ===== Bottom Row: 2 Highlight Overview Cards + Donut Chart ===== */}
+        {/* ===== Bottom Row: 2 Highlight Overview Cards + Stock Distribution Donut Chart ===== */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-          {/* Card 1: 98 Orders Overview Pill Block (3.5 Cols) */}
+          {/* Card 1: Orders Overview Pill Block (3.5 Cols) */}
           <div className="lg:col-span-3 rounded-3xl bg-slate-900 text-white p-6 shadow-sm flex flex-col justify-between relative overflow-hidden group">
-            {/* Background subtle curve */}
+            {/* Background subtle icon */}
             <div className="absolute right-0 bottom-0 opacity-10 pointer-events-none">
               <ShoppingCart className="w-32 h-32 text-white transform translate-x-4 translate-y-4" />
             </div>
@@ -515,6 +545,7 @@ export default function DashboardPage() {
               <Link
                 href="/orders"
                 className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur flex items-center justify-center text-white transition hover:scale-105"
+                title="View Orders"
               >
                 <ArrowUpRight className="w-4 h-4 stroke-[2.2]" />
               </Link>
@@ -522,18 +553,18 @@ export default function DashboardPage() {
 
             <div className="mt-8 space-y-1">
               <h4 className="text-3xl sm:text-4xl font-extrabold font-mono tracking-tight text-white">
-                {activeOrders.length}{' '}
+                {allActiveOrders.length}{' '}
                 <span className="text-base sm:text-lg font-medium text-slate-300">orders</span>
               </h4>
               <p className="text-xs text-slate-400">
-                {activeOrders.filter((o) => o.payment_status === 'UNPAID').length} orders awaiting full settlement.
+                {allActiveOrders.filter((o) => o.payment_status === 'UNPAID').length} invoices awaiting payment.
               </p>
             </div>
           </div>
 
-          {/* Card 2: 17 Customers Overview Pill Block (3.5 Cols) */}
+          {/* Card 2: Customers Overview Pill Block (3.5 Cols) */}
           <div className="lg:col-span-4 rounded-3xl bg-slate-900 text-white p-6 shadow-sm flex flex-col justify-between relative overflow-hidden group">
-            {/* Background subtle curve */}
+            {/* Background subtle icon */}
             <div className="absolute right-0 bottom-0 opacity-10 pointer-events-none">
               <Users className="w-32 h-32 text-white transform translate-x-4 translate-y-4" />
             </div>
@@ -548,6 +579,7 @@ export default function DashboardPage() {
               <Link
                 href="/customers"
                 className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur flex items-center justify-center text-white transition hover:scale-105"
+                title="View Customers"
               >
                 <ArrowUpRight className="w-4 h-4 stroke-[2.2]" />
               </Link>
@@ -559,19 +591,21 @@ export default function DashboardPage() {
                 <span className="text-base sm:text-lg font-medium text-slate-300">customers</span>
               </h4>
               <p className="text-xs text-slate-400">
-                {topDebtors.length} customers with outstanding balances due.
+                {topDebtors.length} accounts with pending balance due.
               </p>
             </div>
           </div>
 
-          {/* Card 3: Donut / Category Distribution Chart (5 Cols) matching reference */}
+          {/* Card 3: Real Inventory Stock Health Donut Chart (5 Cols) */}
           <div className="lg:col-span-5 rounded-3xl bg-white border border-slate-200/80 p-6 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between pb-2">
               <div>
                 <h3 className="text-base font-extrabold text-slate-900 tracking-tight font-heading">
-                  Stock & Categories
+                  Stock Health
                 </h3>
-                <p className="text-xs text-slate-400 font-medium">Inventory Health & Distribution</p>
+                <p className="text-xs text-slate-400 font-medium">
+                  {totalProductItems} active items • {totalGarmentPieces.toLocaleString()} pcs total
+                </p>
               </div>
 
               {/* Fine Arrow */}
@@ -587,23 +621,29 @@ export default function DashboardPage() {
             {/* Donut Chart and Legend */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
               <div className="w-36 h-36 relative shrink-0">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={categoryChartData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={36}
-                      outerRadius={58}
-                      paddingAngle={4}
-                      dataKey="value"
-                    >
-                      {categoryChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
+                {totalProductItems === 0 ? (
+                  <div className="w-full h-full rounded-full border-4 border-dashed border-slate-200 flex items-center justify-center text-[10px] text-slate-400 font-mono text-center p-2">
+                    No items in catalog
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={categoryChartData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={36}
+                        outerRadius={58}
+                        paddingAngle={4}
+                        dataKey="count"
+                      >
+                        {categoryChartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
               </div>
 
               {/* Legend List */}
@@ -614,7 +654,7 @@ export default function DashboardPage() {
                       <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
                       <span className="text-slate-700 font-sans text-xs">{item.name}</span>
                     </div>
-                    <span className="font-bold text-slate-900">{item.value}</span>
+                    <span className="font-bold text-slate-900">{item.count} items</span>
                   </div>
                 ))}
               </div>
@@ -629,7 +669,7 @@ export default function DashboardPage() {
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h3 className="font-extrabold text-sm text-slate-900 tracking-tight">Recent Orders</h3>
-                <p className="text-xs text-slate-400">Latest confirmed wholesale sales invoices</p>
+                <p className="text-xs text-slate-400">Latest wholesale sales transactions</p>
               </div>
               <Link
                 href="/orders"
@@ -700,7 +740,7 @@ export default function DashboardPage() {
                   ) : (
                     <tr>
                       <td colSpan={5} className="p-10 text-center text-slate-400 font-sans">
-                        No orders recorded yet.
+                        No orders recorded yet. Click &quot;New Order&quot; to create your first sale.
                       </td>
                     </tr>
                   )}
@@ -714,7 +754,7 @@ export default function DashboardPage() {
             <div className="rounded-3xl bg-white border border-slate-200/80 p-6 shadow-xs space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div>
-                  <h3 className="font-extrabold text-sm text-slate-900 tracking-tight">Top Outstanding</h3>
+                  <h3 className="font-extrabold text-sm text-slate-900 tracking-tight">Top Receivables</h3>
                   <p className="text-xs text-slate-400">Clients with pending credit due</p>
                 </div>
                 <Link
@@ -761,7 +801,7 @@ export default function DashboardPage() {
               ) : (
                 <div className="py-6 text-center space-y-1 text-slate-400 text-xs">
                   <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
-                  <p>All accounts are cleared!</p>
+                  <p>All accounts are cleared! No outstanding receivables.</p>
                 </div>
               )}
             </div>
@@ -782,10 +822,25 @@ export default function DashboardPage() {
 
       <ConfirmModal
         isOpen={clearModalOpen}
-        title="Wipe All Sample Data?"
-        message="This will permanently delete all demo products, customer profiles, and order history, leaving you with a fresh empty store to enter your real business catalog."
-        confirmText="Yes, Wipe Data"
-        cancelText="Cancel"
+        title="Wipe & Reset Demo Database?"
+        message="This action will permanently delete all demo records from your database so you can start fresh with your real wholesale shop data."
+        actionDetails={[
+          {
+            label: 'Garments & Stock Catalog',
+            description: 'All demo products, lot costs, and stock quantities will be deleted.',
+          },
+          {
+            label: 'Client Accounts & Receivables',
+            description: 'All customer profiles and their historical account ledgers will be wiped.',
+          },
+          {
+            label: 'Sales Invoices & Cash Log',
+            description: 'All generated orders, vouchers, and installment receipts will be permanently cleared.',
+          },
+        ]}
+        warningNote="Permanent action: This database reset cannot be reversed."
+        confirmText="Yes, Wipe All Data"
+        cancelText="Cancel & Keep Data"
         variant="danger"
         onConfirm={handleConfirmClear}
         onCancel={() => setClearModalOpen(false)}

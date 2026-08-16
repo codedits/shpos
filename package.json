@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "npx tsx scripts/test-suite.ts",
+    "test:suite": "npx tsx scripts/test-suite.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

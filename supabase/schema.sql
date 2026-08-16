@@ -21,7 +21,18 @@ CREATE TABLE IF NOT EXISTS public.products (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-ALTER TABLE public.products ADD COLUMN IF NOT EXISTS image_url TEXT;
+
+-- 1b. PRODUCT VARIANTS TABLE (Color × Size Matrix)
+CREATE TABLE IF NOT EXISTS public.product_variants (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  product_id UUID NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
+  color TEXT NOT NULL,
+  size TEXT NOT NULL CHECK (size IN ('Small', 'Medium', 'Large', 'Standard', 'XL')),
+  stock_quantity INT NOT NULL DEFAULT 0 CHECK (stock_quantity >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_product_color_size UNIQUE (product_id, color, size)
+);
 
 -- 2. CUSTOMERS TABLE
 CREATE TABLE IF NOT EXISTS public.customers (
@@ -59,6 +70,7 @@ CREATE TABLE IF NOT EXISTS public.order_items (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
   product_id UUID NOT NULL REFERENCES public.products(id) ON DELETE RESTRICT,
+  variant_id UUID REFERENCES public.product_variants(id) ON DELETE RESTRICT,
   product_code_snapshot TEXT NOT NULL,
   product_name_snapshot TEXT NOT NULL,
   size_snapshot TEXT,
@@ -168,21 +180,43 @@ CREATE INDEX IF NOT EXISTS idx_cash_movements_session ON public.register_cash_mo
 -- ==============================================================================
 -- DETERMINISTIC CUSTOMER BALANCES VIEW
 -- ==============================================================================
+DROP VIEW IF EXISTS public.customer_balances_view;
+
 CREATE OR REPLACE VIEW public.customer_balances_view WITH (security_invoker = true) AS
+WITH customer_orders AS (
+  SELECT
+    customer_id,
+    COALESCE(SUM(total_amount), 0.00) AS total_billed,
+    COALESCE(SUM(amount_paid), 0.00) AS total_order_paid,
+    COALESCE(SUM(remaining_amount), 0.00) AS total_outstanding,
+    COUNT(id) AS total_orders_count
+  FROM public.orders
+  WHERE is_voided = FALSE
+  GROUP BY customer_id
+),
+customer_payments AS (
+  SELECT
+    customer_id,
+    COALESCE(SUM(amount), 0.00) AS total_paid
+  FROM public.payments
+  WHERE is_voided = FALSE
+  GROUP BY customer_id
+)
 SELECT 
+  c.id,
   c.id AS customer_id,
   c.name,
   c.phone,
   c.address,
-  COALESCE(SUM(o.total_amount) FILTER (WHERE o.is_voided = FALSE), 0.00) AS total_billed,
-  COALESCE(SUM(pa.amount_allocated) FILTER (WHERE o.is_voided = FALSE AND p.is_voided = FALSE), 0.00) AS total_paid,
-  COALESCE(SUM(o.remaining_amount) FILTER (WHERE o.is_voided = FALSE), 0.00) AS total_outstanding,
-  COUNT(DISTINCT o.id) FILTER (WHERE o.is_voided = FALSE) AS total_orders_count
+  c.created_at,
+  c.updated_at,
+  COALESCE(co.total_billed, 0.00) AS total_billed,
+  COALESCE(cp.total_paid, 0.00) AS total_paid,
+  COALESCE(co.total_outstanding, 0.00) AS total_outstanding,
+  COALESCE(co.total_orders_count, 0::BIGINT) AS total_orders_count
 FROM public.customers c
-LEFT JOIN public.orders o ON o.customer_id = c.id
-LEFT JOIN public.payment_allocations pa ON pa.order_id = o.id
-LEFT JOIN public.payments p ON p.id = pa.payment_id
-GROUP BY c.id, c.name, c.phone, c.address;
+LEFT JOIN customer_orders co ON co.customer_id = c.id
+LEFT JOIN customer_payments cp ON cp.customer_id = c.id;
 
 -- ==============================================================================
 -- SUPABASE STORAGE BUCKET: product-images (500KB limit per image, public read)

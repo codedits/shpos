@@ -246,9 +246,32 @@ export default function ProductsPage() {
                             {p.product_code}
                           </span>
                         </td>
-                        <td className="p-4 font-sans font-bold text-slate-900">{p.name}</td>
-                        <td className="p-4 text-center text-slate-700">{p.size || '—'}</td>
-                        <td className="p-4 text-center text-slate-700">{p.color || '—'}</td>
+                        <td className="p-4 font-sans font-bold text-slate-900">
+                          <div>{p.name}</div>
+                          {p.variants && p.variants.length > 0 && (
+                            <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                              {Array.from(new Set(p.variants.map((v) => v.color))).join(', ')}
+                            </div>
+                          )}
+                        </td>
+                        <td className="p-4 text-center text-slate-700 font-mono">
+                          {p.variants && p.variants.length > 0 ? (
+                            <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 text-[10px] font-bold">
+                              5 Fixed Sizes
+                            </span>
+                          ) : (
+                            p.size || 'Standard'
+                          )}
+                        </td>
+                        <td className="p-4 text-center text-slate-700 font-mono">
+                          {p.variants && p.variants.length > 0 ? (
+                            <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-bold">
+                              {new Set(p.variants.map((v) => v.color)).size} Colors
+                            </span>
+                          ) : (
+                            p.color || 'Standard'
+                          )}
+                        </td>
                         <td className="p-4 text-center">
                           {isOutOfStock ? (
                             <span className="px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-800 border border-rose-200 text-[10px] font-bold uppercase inline-flex items-center space-x-1">
@@ -372,10 +395,25 @@ export default function ProductsPage() {
       {/* Confirmation Modal for Product Deletion */}
       <ConfirmModal
         isOpen={Boolean(productToDelete)}
-        title="Delete / Archive Product?"
-        message={`Are you sure you want to remove ${productToDelete?.product_code} (${productToDelete?.name})? If the product has previous sales orders, it will be safely archived to preserve invoice history.`}
-        confirmText="Yes, Delete Product"
-        cancelText="Cancel"
+        title={`Delete Garment "${productToDelete?.product_code}"?`}
+        message={`Are you sure you want to remove ${productToDelete?.product_code} (${productToDelete?.name}) from your active wholesale inventory?`}
+        actionDetails={[
+          {
+            label: 'POS Catalog',
+            description: 'This garment will be hidden and disabled from the new order selection terminal.',
+          },
+          {
+            label: 'Historical Invoices',
+            description: 'Existing sales records and vouchers containing this product will remain completely intact.',
+          },
+          {
+            label: 'Stock Count',
+            description: `Current available stock (${productToDelete?.stock_quantity || 0} pcs) will no longer be listed.`,
+          },
+        ]}
+        warningNote="Action Note: You can re-activate or re-add this product anytime from inventory management."
+        confirmText="Yes, Remove Garment"
+        cancelText="Keep in Catalog"
         variant="danger"
         isLoading={deleting}
         onConfirm={confirmDeleteProduct}

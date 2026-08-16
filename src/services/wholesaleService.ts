@@ -32,32 +32,7 @@ const STORAGE_KEYS = {
 };
 
 // Initial Seed Data for offline fallback
-const DEFAULT_PRODUCTS: Product[] = [
-  {
-    id: '1027ba5f-6ab1-4386-85a4-9eab55d54d59',
-    product_code: 'TS03',
-    name: 'lehnga',
-    size: 'L',
-    color: 'Black',
-    stock_quantity: 30,
-    lot_cost: 60000,
-    is_active: true,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'b391ea3f-355a-493a-94b6-99b809acf590',
-    product_code: 'RH11',
-    name: 'mexi',
-    size: 'M',
-    color: 'White',
-    stock_quantity: 40,
-    lot_cost: 40000,
-    is_active: true,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-];
+const DEFAULT_PRODUCTS: Product[] = [];
 
 const DEFAULT_CUSTOMERS: Customer[] = [];
 
@@ -119,7 +94,10 @@ export const wholesaleService = {
         if (supabase) {
           const { data, error } = await supabase
             .from('products')
-            .select('*')
+            .select(`
+              *,
+              variants:product_variants(*)
+            `)
             .eq('is_active', true)
             .order('name', { ascending: true });
 
@@ -132,15 +110,33 @@ export const wholesaleService = {
           products = getLocal<Product[]>(STORAGE_KEYS.PRODUCTS, DEFAULT_PRODUCTS);
         }
 
-        return products.map((p) => ({
-          ...p,
-          lot_cost: parseFloat(p.lot_cost as any) || 0,
-          stock_quantity: parseInt(p.stock_quantity as any, 10) || 0,
-          unit_cost:
-            p.stock_quantity > 0
-              ? parseFloat(((p.lot_cost as any) / (p.stock_quantity as any)).toFixed(2))
-              : 0,
-        }));
+        return products.map((p) => {
+          const variants = (p.variants || []).map((v: any) => ({
+            id: v.id,
+            product_id: v.product_id,
+            color: v.color,
+            size: v.size,
+            stock_quantity: parseInt(v.stock_quantity as any, 10) || 0,
+            created_at: v.created_at,
+            updated_at: v.updated_at,
+          }));
+
+          // Calculate authoritative total stock from variants if present
+          const totalVariantStock = variants.length > 0
+            ? variants.reduce((sum: number, v: any) => sum + v.stock_quantity, 0)
+            : parseInt(p.stock_quantity as any, 10) || 0;
+
+          return {
+            ...p,
+            lot_cost: parseFloat(p.lot_cost as any) || 0,
+            stock_quantity: totalVariantStock,
+            variants,
+            unit_cost:
+              totalVariantStock > 0
+                ? parseFloat(((p.lot_cost as any) / totalVariantStock).toFixed(2))
+                : 0,
+          };
+        });
       },
       {
         ttlMs: CACHE_TTL.PRODUCTS,
@@ -190,17 +186,65 @@ export const wholesaleService = {
   },
 
   async getProductById(id: string): Promise<Product | null> {
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('products')
+        .select(`
+          *,
+          variants:product_variants(*)
+        `)
+        .eq('id', id)
+        .single();
+
+      if (!error && data) {
+        const variants = (data.variants || []).map((v: any) => ({
+          id: v.id,
+          product_id: v.product_id,
+          color: v.color,
+          size: v.size,
+          stock_quantity: parseInt(v.stock_quantity as any, 10) || 0,
+          created_at: v.created_at,
+          updated_at: v.updated_at,
+        }));
+
+        const totalVariantStock = variants.length > 0
+          ? variants.reduce((sum: number, v: any) => sum + v.stock_quantity, 0)
+          : parseInt(data.stock_quantity as any, 10) || 0;
+
+        return {
+          ...data,
+          lot_cost: parseFloat(data.lot_cost as any) || 0,
+          stock_quantity: totalVariantStock,
+          variants,
+          unit_cost:
+            totalVariantStock > 0
+              ? parseFloat(((data.lot_cost as any) / totalVariantStock).toFixed(2))
+              : 0,
+        };
+      }
+    }
+
     const products = await this.getProducts();
     return products.find((p) => p.id === id) || null;
   },
 
-  async createProduct(input: Omit<Product, 'id' | 'created_at' | 'updated_at' | 'unit_cost'>): Promise<Product> {
+  async createProduct(
+    input: Omit<Product, 'id' | 'created_at' | 'updated_at' | 'unit_cost'>,
+    variantsInput?: Array<{ color: string; size: any; stock_quantity: number }>
+  ): Promise<Product> {
     const id = generateUUID();
+
+    // Compute total stock from variant list if supplied
+    const initialVariants = variantsInput && variantsInput.length > 0 ? variantsInput : [];
+    const totalStock = initialVariants.length > 0
+      ? initialVariants.reduce((sum, v) => sum + (parseInt(v.stock_quantity as any, 10) || 0), 0)
+      : parseInt(input.stock_quantity as any, 10) || 0;
+
     const newProduct: Product = {
       ...input,
       id,
       lot_cost: parseFloat(input.lot_cost as any) || 0,
-      stock_quantity: parseInt(input.stock_quantity as any, 10) || 0,
+      stock_quantity: totalStock,
       is_active: input.is_active ?? true,
       image_url: input.image_url || null,
       created_at: new Date().toISOString(),
@@ -208,6 +252,7 @@ export const wholesaleService = {
     };
 
     if (supabase) {
+      // 1. Insert product record
       const { data, error } = await supabase
         .from('products')
         .insert([
@@ -231,6 +276,38 @@ export const wholesaleService = {
         newProduct.created_at = data.created_at;
         newProduct.updated_at = data.updated_at;
       }
+
+      // 2. Insert variant records
+      if (initialVariants.length > 0) {
+        const variantInserts = initialVariants.map((v) => ({
+          product_id: newProduct.id,
+          color: v.color.trim(),
+          size: v.size,
+          stock_quantity: parseInt(v.stock_quantity as any, 10) || 0,
+        }));
+
+        const { data: vData, error: vErr } = await supabase
+          .from('product_variants')
+          .insert(variantInserts)
+          .select();
+
+        if (!vErr && vData) {
+          newProduct.variants = vData;
+        }
+      }
+    } else {
+      // Local storage variants
+      if (initialVariants.length > 0) {
+        newProduct.variants = initialVariants.map((v) => ({
+          id: generateUUID(),
+          product_id: newProduct.id,
+          color: v.color.trim(),
+          size: v.size,
+          stock_quantity: parseInt(v.stock_quantity as any, 10) || 0,
+          created_at: newProduct.created_at,
+          updated_at: newProduct.updated_at,
+        }));
+      }
     }
 
     const localProducts = getLocal<Product[]>(STORAGE_KEYS.PRODUCTS, DEFAULT_PRODUCTS);
@@ -248,18 +325,29 @@ export const wholesaleService = {
     };
   },
 
-  async updateProduct(id: string, input: Partial<Omit<Product, 'id' | 'created_at' | 'updated_at'>>): Promise<Product> {
+  async updateProduct(
+    id: string,
+    input: Partial<Omit<Product, 'id' | 'created_at' | 'updated_at'>>,
+    variantsInput?: Array<{ id?: string; color: string; size: any; stock_quantity: number }>
+  ): Promise<Product> {
     const existing = await this.getProductById(id);
     if (!existing) throw new Error('Product not found.');
+
+    const initialVariants = variantsInput && variantsInput.length > 0 ? variantsInput : (existing.variants || []);
+    const totalStock = initialVariants.length > 0
+      ? initialVariants.reduce((sum, v) => sum + (parseInt(v.stock_quantity as any, 10) || 0), 0)
+      : input.stock_quantity !== undefined ? parseInt(input.stock_quantity as any, 10) || 0 : existing.stock_quantity;
 
     const updated: Product = {
       ...existing,
       ...input,
+      stock_quantity: totalStock,
       image_url: input.image_url !== undefined ? input.image_url : existing.image_url,
       updated_at: new Date().toISOString(),
     };
 
     if (supabase) {
+      // 1. Update product table
       const { error } = await supabase
         .from('products')
         .update({
@@ -276,6 +364,39 @@ export const wholesaleService = {
         .eq('id', id);
 
       if (error) throw new Error(error.message);
+
+      // 2. Upsert/sync variants in product_variants table
+      if (variantsInput && variantsInput.length > 0) {
+        // Delete variants not in updated list
+        const currentVariantIds = variantsInput.filter((v) => v.id).map((v) => v.id);
+        if (currentVariantIds.length > 0) {
+          await supabase
+            .from('product_variants')
+            .delete()
+            .eq('product_id', id)
+            .not('id', 'in', `(${currentVariantIds.join(',')})`);
+        } else {
+          await supabase.from('product_variants').delete().eq('product_id', id);
+        }
+
+        const upsertRows = variantsInput.map((v) => ({
+          ...(v.id ? { id: v.id } : {}),
+          product_id: id,
+          color: v.color.trim(),
+          size: v.size,
+          stock_quantity: parseInt(v.stock_quantity as any, 10) || 0,
+          updated_at: new Date().toISOString(),
+        }));
+
+        const { data: upData, error: upErr } = await supabase
+          .from('product_variants')
+          .upsert(upsertRows, { onConflict: 'product_id, color, size' })
+          .select();
+
+        if (!upErr && upData) {
+          updated.variants = upData;
+        }
+      }
     }
 
     const localProducts = getLocal<Product[]>(STORAGE_KEYS.PRODUCTS, DEFAULT_PRODUCTS);
@@ -470,6 +591,39 @@ export const wholesaleService = {
     CacheManager.invalidate([CacheKeys.CUSTOMERS]);
 
     return updated;
+  },
+
+  async deleteCustomer(id: string): Promise<void> {
+    if (supabase) {
+      // Check if customer has associated active orders or payments
+      const { data: orderCheck } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('customer_id', id)
+        .limit(1);
+
+      if (orderCheck && orderCheck.length > 0) {
+        // Cascade delete allocations, payments, items and orders for this customer
+        const { data: custOrders } = await supabase.from('orders').select('id').eq('customer_id', id);
+        const orderIds = (custOrders || []).map((o) => o.id);
+
+        if (orderIds.length > 0) {
+          await supabase.from('payment_allocations').delete().in('order_id', orderIds);
+          await supabase.from('order_items').delete().in('order_id', orderIds);
+          await supabase.from('orders').delete().eq('customer_id', id);
+        }
+        await supabase.from('payments').delete().eq('customer_id', id);
+      }
+
+      const { error } = await supabase.from('customers').delete().eq('id', id);
+      if (error) throw new Error(error.message);
+    }
+
+    const local = getLocal<Customer[]>(STORAGE_KEYS.CUSTOMERS, DEFAULT_CUSTOMERS);
+    setLocal(STORAGE_KEYS.CUSTOMERS, local.filter((c) => c.id !== id));
+
+    // Invalidate caches
+    CacheManager.invalidate([CacheKeys.CUSTOMERS, CacheKeys.ORDERS, CacheKeys.PAYMENTS]);
   },
 
   // ==========================================
@@ -680,6 +834,7 @@ export const wholesaleService = {
         p_customer_id: input.customer_id,
         p_items: input.items.map((it) => ({
           product_id: it.product_id,
+          variant_id: it.variant_id || null,
           quantity: it.quantity,
           selling_price_per_unit: it.selling_price_per_unit,
         })),
