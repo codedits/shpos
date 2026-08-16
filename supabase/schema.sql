@@ -17,9 +17,11 @@ CREATE TABLE IF NOT EXISTS public.products (
   stock_quantity INT NOT NULL DEFAULT 0 CHECK (stock_quantity >= 0),
   lot_cost NUMERIC(12, 2) NOT NULL DEFAULT 0.00 CHECK (lot_cost >= 0),
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  image_url TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS image_url TEXT;
 
 -- 2. CUSTOMERS TABLE
 CREATE TABLE IF NOT EXISTS public.customers (
@@ -181,3 +183,68 @@ LEFT JOIN public.orders o ON o.customer_id = c.id
 LEFT JOIN public.payment_allocations pa ON pa.order_id = o.id
 LEFT JOIN public.payments p ON p.id = pa.payment_id
 GROUP BY c.id, c.name, c.phone, c.address;
+
+-- ==============================================================================
+-- SUPABASE STORAGE BUCKET: product-images (500KB limit per image, public read)
+-- ==============================================================================
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'product-images',
+  'product-images',
+  true,
+  524288, -- 500 KB limit
+  ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+)
+ON CONFLICT (id) DO UPDATE SET
+  public = true,
+  file_size_limit = 524288,
+  allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+-- Storage Policies for product-images bucket
+DO $$
+BEGIN
+  -- 1. Public Read Access
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies 
+    WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = 'Public Access to Product Images'
+  ) THEN
+    CREATE POLICY "Public Access to Product Images"
+    ON storage.objects FOR SELECT
+    TO public
+    USING (bucket_id = 'product-images');
+  END IF;
+
+  -- 2. Allow Authenticated & Anon Uploads
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies 
+    WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = 'Allow Uploads to Product Images'
+  ) THEN
+    CREATE POLICY "Allow Uploads to Product Images"
+    ON storage.objects FOR INSERT
+    TO public
+    WITH CHECK (bucket_id = 'product-images');
+  END IF;
+
+  -- 3. Allow Updates / Overwriting
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies 
+    WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = 'Allow Updates to Product Images'
+  ) THEN
+    CREATE POLICY "Allow Updates to Product Images"
+    ON storage.objects FOR UPDATE
+    TO public
+    USING (bucket_id = 'product-images');
+  END IF;
+
+  -- 4. Allow Deletion
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies 
+    WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = 'Allow Deletes from Product Images'
+  ) THEN
+    CREATE POLICY "Allow Deletes from Product Images"
+    ON storage.objects FOR DELETE
+    TO public
+    USING (bucket_id = 'product-images');
+  END IF;
+END $$;
+

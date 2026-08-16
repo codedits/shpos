@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { wholesaleService } from '@/services/wholesaleService';
 import { useToast } from '@/context/ToastContext';
+import { ImageUpload } from '@/components/ui/ImageUpload';
 import {
   Package,
   ArrowLeft,
@@ -14,6 +15,7 @@ import {
   Layers,
   Sparkles,
   Calculator,
+  Upload,
 } from 'lucide-react';
 
 export default function NewProductPage() {
@@ -28,6 +30,9 @@ export default function NewProductPage() {
     stock_quantity: '100',
     lot_cost: '70000',
   });
+
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -71,6 +76,17 @@ export default function NewProductPage() {
 
     try {
       setSubmitting(true);
+
+      // 1. Upload compressed image if provided
+      let finalImageUrl: string | null = null;
+      if (imageFile) {
+        finalImageUrl = await wholesaleService.uploadProductImage(
+          imageFile,
+          formData.product_code.trim().toUpperCase()
+        );
+      }
+
+      // 2. Create product in database
       const created = await wholesaleService.createProduct({
         product_code: formData.product_code.trim().toUpperCase(),
         name: formData.name.trim(),
@@ -78,6 +94,7 @@ export default function NewProductPage() {
         color: formData.color.trim() || null,
         stock_quantity: stock,
         lot_cost: lotCost,
+        image_url: finalImageUrl,
         is_active: true,
       });
 
@@ -101,7 +118,7 @@ export default function NewProductPage() {
           <div className="flex items-center space-x-3.5">
             <Link
               href="/products"
-              className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition"
+              className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition btn-press"
               title="Back to Products"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -111,7 +128,7 @@ export default function NewProductPage() {
                 Add Wholesale Garment Product
               </h1>
               <p className="text-xs text-slate-500">
-                Enter product code, initial quantity in pieces, and total lot purchase valuation.
+                Enter product code, picture, quantity in pieces, and lot valuation.
               </p>
             </div>
           </div>
@@ -127,6 +144,19 @@ export default function NewProductPage() {
 
         {/* Form & Live Calculation Layout */}
         <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-slate-200 p-6 sm:p-8 shadow-xs space-y-6">
+          {/* Image Upload Component (Compressed to <= 500KB) */}
+          <div className="pb-2 border-b border-slate-100">
+            <ImageUpload
+              value={imagePreview}
+              productCode={formData.product_code}
+              disabled={submitting}
+              onChange={(file, previewUrl) => {
+                setImageFile(file);
+                setImagePreview(previewUrl);
+              }}
+            />
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             {/* Product Code */}
             <div>
@@ -220,22 +250,25 @@ export default function NewProductPage() {
               <input
                 type="number"
                 min="0"
-                step="1"
                 required
-                placeholder="e.g. 100"
+                placeholder="100"
                 value={formData.stock_quantity}
                 onChange={(e) => {
                   setFormData({ ...formData, stock_quantity: e.target.value });
                   if (fieldErrors.stock_quantity) setFieldErrors({ ...fieldErrors, stock_quantity: '' });
                 }}
-                className="w-full p-3 rounded-lg border border-slate-300 text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
+                className={`w-full p-3 rounded-lg border text-xs font-mono font-bold focus:outline-none focus:ring-2 ${
+                  fieldErrors.stock_quantity
+                    ? 'border-rose-400 focus:ring-rose-400 bg-rose-50/20'
+                    : 'border-slate-300 focus:ring-slate-900 bg-white'
+                }`}
               />
               {fieldErrors.stock_quantity && (
                 <p className="text-[11px] text-rose-600 font-semibold mt-1">{fieldErrors.stock_quantity}</p>
               )}
             </div>
 
-            {/* Total Lot Cost */}
+            {/* Lot Cost */}
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                 Total Lot Purchase Cost (Rs.) *
@@ -245,13 +278,17 @@ export default function NewProductPage() {
                 min="0"
                 step="0.01"
                 required
-                placeholder="e.g. 70000"
+                placeholder="70000"
                 value={formData.lot_cost}
                 onChange={(e) => {
                   setFormData({ ...formData, lot_cost: e.target.value });
                   if (fieldErrors.lot_cost) setFieldErrors({ ...fieldErrors, lot_cost: '' });
                 }}
-                className="w-full p-3 rounded-lg border border-slate-300 text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
+                className={`w-full p-3 rounded-lg border text-xs font-mono font-bold focus:outline-none focus:ring-2 ${
+                  fieldErrors.lot_cost
+                    ? 'border-rose-400 focus:ring-rose-400 bg-rose-50/20'
+                    : 'border-slate-300 focus:ring-slate-900 bg-white'
+                }`}
               />
               {fieldErrors.lot_cost && (
                 <p className="text-[11px] text-rose-600 font-semibold mt-1">{fieldErrors.lot_cost}</p>
@@ -259,58 +296,43 @@ export default function NewProductPage() {
             </div>
           </div>
 
-          {/* Real-time Calculation Breakdown Preview Card */}
-          <div className="p-5 rounded-xl bg-slate-900 text-white space-y-3 font-mono text-xs shadow-xs">
-            <div className="flex items-center space-x-2 text-slate-300 pb-2 border-b border-slate-800">
-              <Calculator className="w-4 h-4 text-emerald-400" />
-              <span className="font-bold text-xs uppercase font-sans">Automated Valuation Preview</span>
+          {/* Internal Derived Cost / Piece Preview Card */}
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
+                <Calculator className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 font-sans">Derived Cost Per Piece</h4>
+                <p className="text-[11px] text-slate-500 font-mono">
+                  Rs. {previewLotCost.toLocaleString()} ÷ {previewStock.toLocaleString()} pieces
+                </p>
+              </div>
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
-              <div>
-                <span className="text-[10px] text-slate-400 block uppercase">Pieces in Lot</span>
-                <span className="text-base font-bold text-white">{previewStock} Pcs</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-slate-400 block uppercase">Total Lot Cost</span>
-                <span className="text-base font-bold text-white">Rs. {previewLotCost.toLocaleString()}</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-slate-400 block uppercase">Calculated Unit Cost / Pc</span>
-                <span className="text-base font-black text-emerald-400">Rs. {previewUnitCost}</span>
-              </div>
+            <div className="text-right">
+              <span className="text-base sm:text-lg font-black text-slate-900 font-mono">
+                Rs. {previewUnitCost}
+              </span>
+              <span className="text-[10px] text-slate-400 block font-mono">/ piece valuation</span>
             </div>
           </div>
 
-          {/* Action Buttons */}
+          {/* Submit Actions */}
           <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-100">
             <Link
               href="/products"
-              className="px-5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs transition"
+              className="btn-press px-5 py-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition"
             >
               Cancel
             </Link>
-
             <button
               type="submit"
               disabled={submitting}
-              className={`px-7 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center space-x-2 transition shadow-xs ${
-                submitting
-                  ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                  : 'bg-slate-900 hover:bg-slate-800 text-white hover:shadow-sm'
+              className={`btn-press px-6 py-2.5 rounded-lg font-bold text-xs text-white transition shadow-sm ${
+                submitting ? 'bg-slate-500 cursor-not-allowed' : 'bg-slate-900 hover:bg-slate-800'
               }`}
             >
-              {submitting ? (
-                <>
-                  <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Saving Product...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  <span>Save Product</span>
-                </>
-              )}
+              {submitting ? 'Compressing & Saving...' : 'Save Garment Product'}
             </button>
           </div>
         </form>

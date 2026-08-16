@@ -362,6 +362,18 @@ function CreateOrderForm() {
                           onChange={() => handleToggleProduct(prod)}
                           className="w-4 h-4 mt-1 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
                         />
+                        <div className="w-10 h-10 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center shrink-0">
+                          {prod.image_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={prod.image_url}
+                              alt={prod.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <Package className="w-4 h-4 text-slate-400" />
+                          )}
+                        </div>
                         <div>
                           <div className="flex items-center space-x-2">
                             <span className="font-mono font-bold text-xs bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded text-slate-900">
@@ -383,7 +395,7 @@ function CreateOrderForm() {
                       </div>
 
                       <div className="text-right font-mono shrink-0">
-                        <span className="text-[10px] text-slate-400 block uppercase">Internal Unit Cost</span>
+                        <span className="text-[10px] text-slate-400 block uppercase">Wholesale Rate</span>
                         <span className="text-xs font-semibold text-slate-700">Rs. {cost.toFixed(2)}</span>
                       </div>
                     </div>
@@ -400,7 +412,7 @@ function CreateOrderForm() {
                             <button
                               type="button"
                               onClick={() => handleUpdateQuantity(prod.id, prod.stock_quantity, state.quantity - 1)}
-                              className="w-8 h-8 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 flex items-center justify-center text-slate-800 font-bold"
+                              className="btn-press w-8 h-8 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 flex items-center justify-center text-slate-800 font-bold"
                             >
                               <Minus className="w-3.5 h-3.5" />
                             </button>
@@ -417,7 +429,7 @@ function CreateOrderForm() {
                             <button
                               type="button"
                               onClick={() => handleUpdateQuantity(prod.id, prod.stock_quantity, state.quantity + 1)}
-                              className="w-8 h-8 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 flex items-center justify-center text-slate-800 font-bold"
+                              className="btn-press w-8 h-8 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 flex items-center justify-center text-slate-800 font-bold"
                             >
                               <Plus className="w-3.5 h-3.5" />
                             </button>
@@ -622,7 +634,7 @@ function CreateOrderForm() {
               type="button"
               disabled={submitting || selectedProductList.length === 0}
               onClick={handleConfirmOrder}
-              className={`w-full py-3.5 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center space-x-2 transition shadow-md ${
+              className={`w-full py-3.5 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center space-x-2 transition shadow-md btn-press ${
                 submitting || selectedProductList.length === 0
                   ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
                   : 'bg-slate-900 hover:bg-slate-800 text-white hover:shadow-lg'

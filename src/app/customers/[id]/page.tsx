@@ -97,6 +97,11 @@ export default function CustomerProfilePage() {
             >
               <ArrowLeft className="w-4 h-4" />
             </Link>
+            <div className="w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-bold shrink-0">
+              {customer.name.trim().split(' ').length >= 2
+                ? (customer.name.trim().split(' ')[0][0] + customer.name.trim().split(' ')[1][0]).toUpperCase()
+                : customer.name.slice(0, 2).toUpperCase()}
+            </div>
             <div>
               <div className="flex items-center space-x-2.5">
                 <h1 className="text-xl font-black tracking-tight text-slate-900 font-heading">
@@ -104,7 +109,7 @@ export default function CustomerProfilePage() {
                 </h1>
                 <Link
                   href={`/customers/${customer.id}/edit`}
-                  className="p-1 rounded border border-slate-200 hover:bg-slate-50 text-slate-600 transition"
+                  className="btn-press p-1 rounded border border-slate-200 hover:bg-slate-50 text-slate-600 transition"
                   title="Edit Customer Details"
                 >
                   <Edit2 className="w-3.5 h-3.5" />
@@ -131,7 +136,7 @@ export default function CustomerProfilePage() {
             {hasOutstanding && (
               <Link
                 href={`/payments/new?customer_id=${customer.id}`}
-                className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-lg flex items-center space-x-1.5 transition shadow-xs"
+                className="btn-press px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-lg flex items-center space-x-1.5 transition shadow-xs"
               >
                 <CreditCard className="w-3.5 h-3.5" />
                 <span>Receive Payment</span>
@@ -139,7 +144,7 @@ export default function CustomerProfilePage() {
             )}
             <Link
               href={`/orders/new?customer_id=${customer.id}`}
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg flex items-center space-x-1.5 transition shadow-xs"
+              className="btn-press px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg flex items-center space-x-1.5 transition shadow-xs"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Create Sale</span>

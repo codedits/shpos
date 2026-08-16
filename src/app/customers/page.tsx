@@ -98,7 +98,7 @@ export default function CustomersPage() {
 
             <Link
               href="/customers/new"
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg flex items-center space-x-1.5 transition shadow-xs hover:shadow-sm"
+              className="btn-press px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg flex items-center space-x-1.5 transition shadow-xs hover:shadow-sm"
             >
               <Plus className="w-4 h-4" />
               <span>Add New Customer</span>
@@ -107,18 +107,18 @@ export default function CustomersPage() {
         </div>
 
         {/* 3 Metric Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 stagger-cards">
+          <div className="bg-white rounded-xl border border-slate-200 accent-card accent-card-purple p-5 shadow-xs">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Customer Accounts</p>
             <h3 className="text-2xl font-black text-slate-900 font-mono mt-1">{customers.length} Accounts</h3>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
+          <div className="bg-white rounded-xl border border-slate-200 accent-card accent-card-rose p-5 shadow-xs">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Outstanding Receivables</p>
             <h3 className="text-2xl font-black text-rose-700 font-mono mt-1">
               Rs. {totalMarketDebt.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </h3>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
+          <div className="bg-white rounded-xl border border-slate-200 accent-card accent-card-amber p-5 shadow-xs">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Accounts With Balance</p>
             <h3 className="text-2xl font-black text-amber-700 font-mono mt-1">
               {debtorsCount} Active Debtors
@@ -173,7 +173,7 @@ export default function CustomersPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500 sticky top-0 z-10">
                   <th className="p-4">Customer Name</th>
                   <th className="p-4">Contact Phone</th>
                   <th className="p-4">City / Market</th>
@@ -193,9 +193,12 @@ export default function CustomersPage() {
                   filteredCustomers.map((c) => {
                     const hasDebt = (c.total_outstanding || 0) > 0;
                     return (
-                      <tr key={c.id} className="hover:bg-slate-50/80 transition">
+                      <tr key={c.id} className={`table-row-hover transition ${hasDebt ? 'hover:bg-rose-50/30' : ''} ${filteredCustomers.indexOf(c) % 2 === 1 ? 'bg-slate-50/50' : ''}`}>
                         <td className="p-4 font-bold text-slate-900">
-                          <Link href={`/customers/${c.id}`} className="hover:underline flex items-center space-x-1.5">
+                          <Link href={`/customers/${c.id}`} className="hover:underline flex items-center space-x-2.5">
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${(() => { const colors = ['bg-blue-100 text-blue-700','bg-emerald-100 text-emerald-700','bg-purple-100 text-purple-700','bg-amber-100 text-amber-700','bg-rose-100 text-rose-700','bg-indigo-100 text-indigo-700']; let h = 0; for (let i = 0; i < c.name.length; i++) h = c.name.charCodeAt(i) + ((h << 5) - h); return colors[Math.abs(h) % colors.length]; })()}`}>
+                              {c.name.trim().split(' ').length >= 2 ? (c.name.trim().split(' ')[0][0] + c.name.trim().split(' ')[1][0]).toUpperCase() : c.name.slice(0, 2).toUpperCase()}
+                            </div>
                             <span>{c.name}</span>
                           </Link>
                         </td>

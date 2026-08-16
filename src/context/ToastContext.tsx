@@ -71,7 +71,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`pointer-events-auto p-4 rounded-xl border shadow-lg flex items-start space-x-3 transition-all duration-300 transform translate-y-0 opacity-100 animate-fade-in ${
+            className={`pointer-events-auto p-4 rounded-xl border shadow-lg flex items-start space-x-3 transition-all duration-300 transform translate-y-0 opacity-100 animate-slide-in-right ${
               toast.type === 'success'
                 ? 'bg-slate-900 text-white border-slate-800'
                 : toast.type === 'error'

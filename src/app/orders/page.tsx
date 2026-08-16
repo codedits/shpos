@@ -54,17 +54,19 @@ export default function OrdersPage() {
     });
   }, [orders, statusFilter, searchQuery]);
 
+  const activeOrders = useMemo(() => orders.filter((o) => !o.is_voided), [orders]);
+
   const totalSalesSum = useMemo(
-    () => orders.reduce((sum, o) => sum + (o.total_amount || 0), 0),
-    [orders]
+    () => activeOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0),
+    [activeOrders]
   );
   const totalPaidSum = useMemo(
-    () => orders.reduce((sum, o) => sum + (o.amount_paid || 0), 0),
-    [orders]
+    () => activeOrders.reduce((sum, o) => sum + (o.amount_paid || 0), 0),
+    [activeOrders]
   );
   const totalRemainingSum = useMemo(
-    () => orders.reduce((sum, o) => sum + (o.remaining_amount || 0), 0),
-    [orders]
+    () => activeOrders.reduce((sum, o) => sum + (o.remaining_amount || 0), 0),
+    [activeOrders]
   );
 
   return (
@@ -97,7 +99,7 @@ export default function OrdersPage() {
 
             <Link
               href="/orders/new"
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg flex items-center space-x-1.5 transition shadow-xs hover:shadow-sm"
+              className="btn-press px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg flex items-center space-x-1.5 transition shadow-xs hover:shadow-sm"
             >
               <Plus className="w-4 h-4" />
               <span>Create New Order</span>
@@ -106,20 +108,20 @@ export default function OrdersPage() {
         </div>
 
         {/* 3 Metric Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 stagger-cards">
+          <div className="bg-white rounded-xl border border-slate-200 accent-card accent-card-blue p-5 shadow-xs">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Sales Booked</p>
             <h3 className="text-2xl font-black text-slate-900 font-mono mt-1">
               Rs. {totalSalesSum.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </h3>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
+          <div className="bg-white rounded-xl border border-slate-200 accent-card accent-card-emerald p-5 shadow-xs">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Cash Received</p>
             <h3 className="text-2xl font-black text-emerald-700 font-mono mt-1">
               Rs. {totalPaidSum.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </h3>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
+          <div className="bg-white rounded-xl border border-slate-200 accent-card accent-card-rose p-5 shadow-xs">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Remaining Unpaid Credit</p>
             <h3 className="text-2xl font-black text-rose-700 font-mono mt-1">
               Rs. {totalRemainingSum.toLocaleString('en-US', { minimumFractionDigits: 2 })}
@@ -175,7 +177,7 @@ export default function OrdersPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500 sticky top-0 z-10">
                   <th className="p-4 font-mono">Invoice #</th>
                   <th className="p-4">Customer Name</th>
                   <th className="p-4 font-mono">Booking Date</th>
@@ -183,7 +185,7 @@ export default function OrdersPage() {
                   <th className="p-4 font-mono">Paid</th>
                   <th className="p-4 font-mono">Remaining</th>
                   <th className="p-4 text-center">Status</th>
-                  <th className="p-4 text-right">View Voucher</th>
+                  <th className="p-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-mono">
@@ -194,8 +196,8 @@ export default function OrdersPage() {
                     </td>
                   </tr>
                 ) : filteredOrders.length > 0 ? (
-                  filteredOrders.map((o) => (
-                    <tr key={o.id} className="hover:bg-slate-50/80 transition">
+                  filteredOrders.map((o, idx) => (
+                    <tr key={o.id} className={`table-row-hover transition ${idx % 2 === 1 ? 'bg-slate-50/50' : ''}`}>
                       <td className="p-4 font-bold text-slate-900">
                         <Link href={`/invoices/${o.invoice_number}`} className="hover:underline">
                           {o.invoice_number}
@@ -222,7 +224,7 @@ export default function OrdersPage() {
                       </td>
                       <td className="p-4 text-center">
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                          className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                             o.payment_status === 'PAID'
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                               : o.payment_status === 'PARTIALLY_PAID'
@@ -230,15 +232,20 @@ export default function OrdersPage() {
                               : 'bg-rose-50 text-rose-700 border border-rose-200'
                           }`}
                         >
-                          {o.payment_status.replace('_', ' ')}
+                          <span className={`w-1.5 h-1.5 rounded-full ${
+                            o.payment_status === 'PAID' ? 'bg-emerald-500' :
+                            o.payment_status === 'PARTIALLY_PAID' ? 'bg-amber-500' : 'bg-rose-500'
+                          }`} />
+                          <span>{o.payment_status.replace('_', ' ')}</span>
                         </span>
                       </td>
                       <td className="p-4 text-right font-sans">
                         <Link
                           href={`/invoices/${o.invoice_number}`}
-                          className="px-3 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-[11px] font-semibold text-slate-800 inline-block transition"
+                          className="p-1.5 rounded-md hover:bg-slate-100 text-slate-600 hover:text-slate-900 inline-block transition btn-press"
+                          title="View Invoice"
                         >
-                          Invoice →
+                          <FileText className="w-4 h-4" />
                         </Link>
                       </td>
                     </tr>

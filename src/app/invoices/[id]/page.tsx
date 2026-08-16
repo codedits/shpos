@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { wholesaleService } from '@/services/wholesaleService';
@@ -18,6 +18,8 @@ import {
   Calendar,
   Clock,
   History,
+  AlertTriangle,
+  Layers,
 } from 'lucide-react';
 import { formatDatePKT } from '@/lib/dateUtils';
 
@@ -51,8 +53,10 @@ export default function InvoiceDetailPage() {
         setOrder(ord);
         setSettings(setts);
 
-        const cust = await wholesaleService.getCustomerById(ord.customer_id);
-        setCustomer(cust);
+        if (ord.customer_id) {
+          const cust = await wholesaleService.getCustomerById(ord.customer_id);
+          setCustomer(cust);
+        }
       } catch (err: any) {
         setErrorMessage(err.message);
       } finally {
@@ -67,6 +71,47 @@ export default function InvoiceDetailPage() {
       window.print();
     }
   };
+
+  // Derive consolidated payment history
+  const paymentHistoryList = useMemo(() => {
+    if (!order) return [];
+    if (order.payments_history && order.payments_history.length > 0) {
+      return order.payments_history;
+    }
+    // If order has amount_paid > 0 but payments_history array is empty, synthesize initial entry
+    if (order.amount_paid > 0) {
+      return [
+        {
+          id: 'initial-pay',
+          payment_id: 'initial',
+          amount_allocated: order.amount_paid,
+          payment_date: order.order_date,
+          payment_method: 'Advance / Initial Payment',
+          note: 'Initial advance booking payment',
+        },
+      ];
+    }
+    return [];
+  }, [order]);
+
+  // Derived piece count
+  const totalPiecesCount = useMemo(() => {
+    if (!order || !order.items) return 0;
+    return order.items.reduce((sum, it) => sum + (it.quantity || 0), 0);
+  }, [order]);
+
+  // Balance calculations
+  const totalInvoiced = order ? order.total_amount || 0 : 0;
+  const totalPaidAgainstThisInvoice = order ? order.amount_paid || 0 : 0;
+  const currentInvoiceRemaining = order ? Math.max(0, totalInvoiced - totalPaidAgainstThisInvoice) : 0;
+  const isFullySettled = currentInvoiceRemaining <= 0;
+
+  // Multi-order customer balance breakdown
+  const customerTotalOutstanding = customer?.total_outstanding !== undefined
+    ? customer.total_outstanding
+    : currentInvoiceRemaining;
+  const previousAccountBalance = Math.max(0, customerTotalOutstanding - currentInvoiceRemaining);
+  const netTotalAccountPayable = customerTotalOutstanding;
 
   if (loading) {
     return (
@@ -85,7 +130,7 @@ export default function InvoiceDetailPage() {
           <p className="text-xs text-slate-500 font-mono">{errorMessage || 'Could not locate order details.'}</p>
           <Link
             href="/orders"
-            className="inline-block px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-lg"
+            className="btn-press inline-block px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-lg"
           >
             Back to Orders
           </Link>
@@ -94,19 +139,16 @@ export default function InvoiceDetailPage() {
     );
   }
 
-  const isFullySettled = order.remaining_amount <= 0;
-  const paymentsHistory = order.payments_history || [];
-
   return (
     <div className="min-h-screen bg-slate-100/70 p-4 sm:p-8 flex flex-col items-center select-none text-slate-900 print:p-0 print:bg-white print:min-h-0">
       {/* Top Action & Format Toggle Bar (Hidden in Print) */}
       <div className="w-full max-w-3xl flex flex-col sm:flex-row items-center justify-between gap-3 mb-6 no-print">
         <Link
-          href="/orders"
-          className="px-3.5 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center space-x-1.5 transition shadow-xs"
+          href="/invoices"
+          className="btn-press px-3.5 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center space-x-1.5 transition shadow-xs"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Back to Orders</span>
+          <span>Back to Invoices</span>
         </Link>
 
         {/* Format Toggle (A4 vs Thermal) */}
@@ -114,46 +156,46 @@ export default function InvoiceDetailPage() {
           <button
             type="button"
             onClick={() => setFormatMode('a4')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition ${
+            className={`btn-press flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition ${
               formatMode === 'a4'
                 ? 'bg-white text-slate-900 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <FileText className="w-3.5 h-3.5" />
-            <span>A4 Invoice</span>
+            <span>A4 Commercial</span>
           </button>
           <button
             type="button"
             onClick={() => setFormatMode('thermal')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition ${
+            className={`btn-press flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition ${
               formatMode === 'thermal'
                 ? 'bg-white text-slate-900 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <Receipt className="w-3.5 h-3.5" />
-            <span>80mm Thermal</span>
+            <span>80mm POS Thermal</span>
           </button>
         </div>
 
         <div className="flex items-center space-x-2">
-          {order.remaining_amount > 0 && (
+          {!order.is_voided && currentInvoiceRemaining > 0 && (
             <Link
               href={`/payments/new?customer_id=${order.customer_id}&order_id=${order.id}`}
-              className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-lg flex items-center space-x-1.5 transition shadow-xs"
+              className="btn-press px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-lg flex items-center space-x-1.5 transition shadow-xs"
             >
               <CreditCard className="w-3.5 h-3.5" />
-              <span>Record Installment (Rs. {order.remaining_amount.toLocaleString()})</span>
+              <span>Record Installment (Rs. {currentInvoiceRemaining.toLocaleString()})</span>
             </Link>
           )}
 
           <button
             onClick={handlePrint}
-            className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg flex items-center space-x-1.5 transition shadow-xs"
+            className="btn-press px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg flex items-center space-x-1.5 transition shadow-xs"
           >
             <Printer className="w-4 h-4" />
-            <span>Print Invoice</span>
+            <span>Print Voucher</span>
           </button>
         </div>
       </div>
@@ -162,9 +204,27 @@ export default function InvoiceDetailPage() {
       <div id="printable-document" className="w-full flex justify-center">
         {formatMode === 'a4' ? (
           /* ========================================================================= */
-          /* 1. OFFICIAL A4 INVOICE FORMAT                                            */
+          /* 1. OFFICIAL A4 COMMERCIAL INVOICE FORMAT                                  */
           /* ========================================================================= */
-          <div className="w-full max-w-3xl bg-white rounded-xl border border-slate-200 p-8 sm:p-12 shadow-sm font-sans space-y-6 print:border-none print:shadow-none print:p-0">
+          <div className="w-full max-w-3xl bg-white rounded-xl border border-slate-200 p-8 sm:p-12 shadow-sm font-sans space-y-6 print:border-none print:shadow-none print:p-0 relative">
+            {/* VOID WATERMARK IF ORDER IS CANCELLED / VOIDED */}
+            {order.is_voided && (
+              <div className="p-4 rounded-xl bg-rose-50 border-2 border-rose-300 text-rose-800 flex items-center justify-between font-mono text-xs mb-4">
+                <div className="flex items-center space-x-2">
+                  <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+                  <div>
+                    <p className="font-bold text-sm uppercase">TRANSACTION VOIDED / CANCELLED</p>
+                    <p className="text-[11px] text-rose-700 mt-0.5">
+                      Reason: {order.void_reason || 'Administrative correction'} • Voided at: {formatDatePKT(order.voided_at, true)}
+                    </p>
+                  </div>
+                </div>
+                <span className="px-3 py-1 bg-rose-600 text-white font-bold text-[10px] rounded uppercase tracking-widest">
+                  VOID
+                </span>
+              </div>
+            )}
+
             {/* Header: Business & Invoice Details */}
             <div className="flex justify-between items-start border-b-2 border-slate-900 pb-5">
               <div>
@@ -181,35 +241,39 @@ export default function InvoiceDetailPage() {
 
               <div className="text-right font-mono">
                 <span className="inline-block px-2.5 py-0.5 bg-slate-900 text-white font-bold text-[11px] rounded tracking-widest uppercase">
-                  SALES INVOICE
+                  COMMERCIAL SALES INVOICE
                 </span>
                 <p className="text-base font-black text-slate-900 mt-1.5">{order.invoice_number}</p>
                 <p className="text-xs text-slate-500">
-                  Invoice Date: {formatDatePKT(order.order_date, true)}
+                  Date: {formatDatePKT(order.order_date, true)}
                 </p>
               </div>
             </div>
 
-            {/* Customer & Payment Status Box */}
+            {/* Customer & Invoice Status Box */}
             <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 flex justify-between items-start text-xs font-mono">
               <div>
-                <p className="text-[10px] font-bold uppercase text-slate-400">Billed To (Customer):</p>
+                <p className="text-[10px] font-bold uppercase text-slate-400">Billed To (Client / Customer):</p>
                 <p className="text-sm font-bold uppercase text-slate-900 font-sans mt-0.5">
-                  {customer?.name || order.customer?.name || 'Walk-in Customer'}
+                  {customer?.name || order.customer?.name || 'Walk-in Buyer'}
                 </p>
-                {customer?.phone && <p className="text-slate-600">Phone: {customer.phone}</p>}
-                {customer?.address && <p className="text-slate-600">Address: {customer.address}</p>}
+                {customer?.phone && <p className="text-slate-600">Contact: {customer.phone}</p>}
+                {customer?.address && <p className="text-slate-600">Market/City: {customer.address}</p>}
               </div>
 
               <div className="text-right">
-                <p className="text-[10px] font-bold uppercase text-slate-400">Payment Status:</p>
+                <p className="text-[10px] font-bold uppercase text-slate-400">Invoice Status:</p>
                 <div className="mt-1">
-                  {isFullySettled ? (
+                  {order.is_voided ? (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-bold uppercase">
+                      VOIDED
+                    </span>
+                  ) : isFullySettled ? (
                     <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase">
                       <CheckCircle2 className="w-3 h-3" />
                       <span>PAID IN FULL</span>
                     </span>
-                  ) : order.amount_paid > 0 ? (
+                  ) : totalPaidAgainstThisInvoice > 0 ? (
                     <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold uppercase">
                       <span>PARTIALLY PAID</span>
                     </span>
@@ -219,7 +283,7 @@ export default function InvoiceDetailPage() {
                     </span>
                   )}
                 </div>
-                {order.notes && <p className="text-slate-500 text-[11px] mt-1">Ref: {order.notes}</p>}
+                {order.notes && <p className="text-slate-500 text-[11px] mt-1">Remarks: {order.notes}</p>}
               </div>
             </div>
 
@@ -233,7 +297,7 @@ export default function InvoiceDetailPage() {
                     <th className="p-3 text-center">Size</th>
                     <th className="p-3 text-center">Color</th>
                     <th className="p-3 text-right">Quantity</th>
-                    <th className="p-3 text-right">Unit Price</th>
+                    <th className="p-3 text-right">Rate / Unit</th>
                     <th className="p-3 text-right">Line Total</th>
                   </tr>
                 </thead>
@@ -252,40 +316,57 @@ export default function InvoiceDetailPage() {
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-slate-200 bg-slate-50 font-bold text-slate-900">
+                    <td colSpan={4} className="p-3 font-sans text-xs uppercase tracking-wider text-slate-600">
+                      Total Quantity Booked:
+                    </td>
+                    <td className="p-3 text-right text-xs">{totalPiecesCount} Pcs</td>
+                    <td className="p-3 text-right font-sans text-slate-500 text-[11px]">Subtotal:</td>
+                    <td className="p-3 text-right text-xs">
+                      Rs. {totalInvoiced.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
 
-            {/* Chronological Payment & Installments History */}
-            {paymentsHistory.length > 0 && (
+            {/* Chronological Payment & Installments Log */}
+            {paymentHistoryList.length > 0 && (
               <div className="border border-slate-200 rounded-lg overflow-hidden space-y-0">
-                <div className="bg-slate-50 p-3 border-b border-slate-200 flex items-center space-x-2">
-                  <History className="w-4 h-4 text-slate-700" />
-                  <h4 className="font-bold text-xs text-slate-900 uppercase font-sans">
-                    Payment & Installments History
-                  </h4>
+                <div className="bg-slate-50 p-3 border-b border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <History className="w-4 h-4 text-slate-700" />
+                    <h4 className="font-bold text-xs text-slate-900 uppercase font-sans">
+                      Payments & Installments Log
+                    </h4>
+                  </div>
+                  <span className="text-[11px] font-mono font-bold text-emerald-700">
+                    Total Paid: Rs. {totalPaidAgainstThisInvoice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </span>
                 </div>
                 <table className="w-full text-left border-collapse text-xs font-mono">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50/50 text-[10px] font-bold uppercase tracking-wider text-slate-500 font-sans">
                       <th className="p-2.5">Date Paid</th>
-                      <th className="p-2.5">Payment Method</th>
-                      <th className="p-2.5">Remarks / Details</th>
-                      <th className="p-2.5 text-right">Amount Received</th>
+                      <th className="p-2.5">Method</th>
+                      <th className="p-2.5">Details / Remarks</th>
+                      <th className="p-2.5 text-right">Amount Allocated</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {paymentsHistory.map((ph, idx) => (
+                    {paymentHistoryList.map((ph, idx) => (
                       <tr key={idx} className="hover:bg-slate-50/50">
                         <td className="p-2.5 text-slate-700">
                           {formatDatePKT(ph.payment_date, true)}
                         </td>
                         <td className="p-2.5 font-sans">
-                          <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 text-[10px] font-bold">
+                          <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 text-[10px] font-bold uppercase">
                             {ph.payment_method}
                           </span>
                         </td>
                         <td className="p-2.5 text-slate-500 font-sans text-[11px]">
-                          {ph.note || (idx === 0 ? 'Initial Payment' : `Installment #${idx + 1}`)}
+                          {ph.note || (idx === 0 ? 'Advance / Deposit' : `Installment #${idx + 1}`)}
                         </td>
                         <td className="p-2.5 text-right font-bold text-emerald-700">
                           Rs. {ph.amount_allocated.toLocaleString('en-US', { minimumFractionDigits: 2 })}
@@ -297,47 +378,68 @@ export default function InvoiceDetailPage() {
               </div>
             )}
 
-            {/* Totals & Balance Summary */}
+            {/* Totals & Clear Financial Settlement Breakdown */}
             <div className="flex justify-end pt-2">
-              <div className="w-full sm:w-80 space-y-2 font-mono text-xs">
+              <div className="w-full sm:w-96 space-y-2.5 font-mono text-xs">
+                {/* 1. Current Invoice Gross Subtotal */}
                 <div className="flex justify-between text-slate-600">
-                  <span>Gross Subtotal:</span>
+                  <span>Gross Subtotal ({totalPiecesCount} Pcs):</span>
                   <span className="font-bold text-slate-900">
-                    Rs. {order.subtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    Rs. {totalInvoiced.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </span>
                 </div>
 
+                {/* 2. Total Invoice Amount */}
                 <div className="flex justify-between text-sm font-black text-slate-900 border-t border-slate-200 pt-2">
-                  <span>Total Invoice Amount:</span>
-                  <span>Rs. {order.total_amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                  <span>Current Invoice Total:</span>
+                  <span>Rs. {totalInvoiced.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                 </div>
 
+                {/* 3. Total Received Against This Invoice */}
                 <div className="flex justify-between text-slate-700">
-                  <span>Total Amount Paid:</span>
+                  <span>Amount Paid on This Invoice:</span>
                   <span className="font-bold text-emerald-700">
-                    Rs. {order.amount_paid.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    - Rs. {totalPaidAgainstThisInvoice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </span>
                 </div>
 
-                <div className="flex justify-between text-slate-900 font-bold border-t border-slate-200 pt-1">
-                  <span>Remaining Balance Due:</span>
-                  <span className={order.remaining_amount > 0 ? 'text-rose-700 font-black' : 'text-emerald-700'}>
-                    Rs. {order.remaining_amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                {/* 4. Current Invoice Remaining Balance Due */}
+                <div className="flex justify-between text-slate-900 font-bold border-t border-slate-200 pt-1.5">
+                  <span>Invoice Balance Due:</span>
+                  <span className={currentInvoiceRemaining > 0 ? 'text-rose-700 font-black text-sm' : 'text-emerald-700 font-black'}>
+                    Rs. {currentInvoiceRemaining.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </span>
                 </div>
 
-                {/* Customer Account Outstanding Balance */}
-                <div className="p-3 rounded-lg bg-slate-100 border border-slate-300 flex justify-between items-center text-xs font-bold text-slate-900 mt-2">
-                  <span className="uppercase text-[10px] tracking-wider text-slate-600">
-                    Customer Account Balance:
-                  </span>
-                  <span className="text-sm">
-                    Rs.{' '}
-                    {(customer?.total_outstanding !== undefined
-                      ? customer.total_outstanding
-                      : order.remaining_amount
-                    ).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </span>
+                {/* 5. Comprehensive Customer Account Ledger Box */}
+                <div className="mt-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between text-slate-500 font-sans text-[11px] font-bold uppercase tracking-wider">
+                    <span>Customer Ledger Status</span>
+                    <span className="text-[10px] font-mono text-slate-400 font-normal">All Orders</span>
+                  </div>
+
+                  {previousAccountBalance > 0 && (
+                    <div className="flex justify-between text-slate-600 pt-1">
+                      <span>Previous Pending Balance:</span>
+                      <span className="font-bold text-slate-800">
+                        Rs. {previousAccountBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between text-slate-600">
+                    <span>This Invoice Due:</span>
+                    <span className="font-bold text-slate-800">
+                      Rs. {currentInvoiceRemaining.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-slate-900 font-black border-t border-slate-200 pt-1.5 text-xs">
+                    <span className="uppercase text-[11px] tracking-wide">Net Total Customer Payable:</span>
+                    <span className={`text-sm ${netTotalAccountPayable > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+                      Rs. {netTotalAccountPayable.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -349,8 +451,8 @@ export default function InvoiceDetailPage() {
                 <div className="mt-8 w-40 border-b border-slate-300" />
               </div>
               <div className="text-right">
-                <p className="text-[10px]">Thank you for your business!</p>
-                <p className="text-[9px] text-slate-400 mt-0.5">Computer-generated official sales voucher</p>
+                <p className="text-[10px] font-sans font-bold text-slate-700">Thank you for your business!</p>
+                <p className="text-[9px] text-slate-400 mt-0.5">Computer-generated official sales voucher • Buraq Wholesale</p>
               </div>
             </div>
           </div>
@@ -359,6 +461,12 @@ export default function InvoiceDetailPage() {
           /* 2. COMPACT 80MM POS THERMAL RECEIPT FORMAT                                */
           /* ========================================================================= */
           <div className="w-80 bg-white rounded-lg border border-slate-300 p-5 font-mono text-xs space-y-3 shadow-md print:border-none print:shadow-none print:p-0">
+            {order.is_voided && (
+              <div className="p-2 rounded bg-rose-50 border border-rose-300 text-rose-800 text-center font-bold text-[11px]">
+                *** VOIDED TRANSACTION ***
+              </div>
+            )}
+
             <div className="text-center space-y-1 pb-3 border-b border-dashed border-slate-300">
               <h2 className="font-black text-sm uppercase text-slate-900 tracking-wider font-heading">
                 {settings.business_name}
@@ -398,10 +506,10 @@ export default function InvoiceDetailPage() {
             </div>
 
             {/* Installments Breakdown in Thermal */}
-            {paymentsHistory.length > 0 && (
+            {paymentHistoryList.length > 0 && (
               <div className="space-y-1 pb-2 border-b border-dashed border-slate-300 text-[10px]">
                 <p className="font-bold text-slate-700 uppercase">Payments Log:</p>
-                {paymentsHistory.map((ph, idx) => (
+                {paymentHistoryList.map((ph, idx) => (
                   <div key={idx} className="flex justify-between text-slate-600">
                     <span>
                       {new Date(ph.payment_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} ({ph.payment_method})
@@ -415,27 +523,31 @@ export default function InvoiceDetailPage() {
             {/* Totals */}
             <div className="space-y-1 text-xs pt-1">
               <div className="flex justify-between font-bold text-slate-900">
-                <span>TOTAL:</span>
-                <span>Rs. {order.total_amount.toFixed(2)}</span>
+                <span>TOTAL ({totalPiecesCount} PCS):</span>
+                <span>Rs. {totalInvoiced.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-emerald-700 font-bold">
-                <span>PAID:</span>
-                <span>Rs. {order.amount_paid.toFixed(2)}</span>
+                <span>AMOUNT PAID:</span>
+                <span>- Rs. {totalPaidAgainstThisInvoice.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between font-bold text-slate-900">
-                <span>BALANCE DUE:</span>
-                <span className={order.remaining_amount > 0 ? 'text-rose-700 font-black' : 'text-emerald-700'}>
-                  Rs. {order.remaining_amount.toFixed(2)}
+              <div className="flex justify-between font-bold text-slate-900 border-t border-dashed border-slate-300 pt-1">
+                <span>INVOICE DUE:</span>
+                <span className={currentInvoiceRemaining > 0 ? 'text-rose-700 font-black' : 'text-emerald-700'}>
+                  Rs. {currentInvoiceRemaining.toFixed(2)}
                 </span>
               </div>
+
+              {previousAccountBalance > 0 && (
+                <div className="flex justify-between text-[11px] text-slate-600">
+                  <span>PREVIOUS DUE:</span>
+                  <span>Rs. {previousAccountBalance.toFixed(2)}</span>
+                </div>
+              )}
+
               <div className="flex justify-between text-slate-900 font-bold border-t border-dashed border-slate-300 pt-1">
-                <span>TOTAL ACCOUNT DUE:</span>
-                <span>
-                  Rs.{' '}
-                  {(customer?.total_outstanding !== undefined
-                    ? customer.total_outstanding
-                    : order.remaining_amount
-                  ).toFixed(2)}
+                <span>NET TOTAL DUE:</span>
+                <span className={netTotalAccountPayable > 0 ? 'text-rose-700 font-black' : 'text-emerald-700'}>
+                  Rs. {netTotalAccountPayable.toFixed(2)}
                 </span>
               </div>
             </div>

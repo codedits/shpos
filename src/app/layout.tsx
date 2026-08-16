@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter, Poppins } from 'next/font/google';
+import { Inter, Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
 import { POSProvider } from '@/context/POSContext';
 import { ToastProvider } from '@/context/ToastContext';
@@ -10,10 +10,10 @@ const inter = Inter({
   display: 'swap',
 });
 
-const poppins = Poppins({
+const plusJakartaSans = Plus_Jakarta_Sans({
   weight: ['400', '500', '600', '700', '800'],
   subsets: ['latin'],
-  variable: '--font-poppins',
+  variable: '--font-jakarta',
   display: 'swap',
 });
 
@@ -28,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${poppins.variable}`}>
+    <html lang="en" className={`${inter.variable} ${plusJakartaSans.variable}`}>
       <body className={`${inter.className} bg-slate-50 text-slate-900 antialiased selection:bg-slate-900 selection:text-white`}>
         <ToastProvider>
           <POSProvider>{children}</POSProvider>

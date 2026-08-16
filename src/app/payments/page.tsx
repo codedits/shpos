@@ -86,7 +86,7 @@ export default function PaymentsPage() {
 
             <Link
               href="/payments/new"
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg flex items-center space-x-1.5 transition shadow-xs hover:shadow-sm"
+              className="btn-press px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg flex items-center space-x-1.5 transition shadow-xs hover:shadow-sm"
             >
               <Plus className="w-4 h-4" />
               <span>Receive Payment</span>
@@ -95,14 +95,14 @@ export default function PaymentsPage() {
         </div>
 
         {/* 2 Metric Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 stagger-cards">
+          <div className="bg-white rounded-xl border border-slate-200 accent-card accent-card-emerald p-5 shadow-xs">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Lifetime Receipts</p>
             <h3 className="text-2xl font-black text-emerald-700 font-mono mt-1">
               Rs. {totalCollectedSum.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </h3>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
+          <div className="bg-white rounded-xl border border-slate-200 accent-card accent-card-blue p-5 shadow-xs">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Payment Transactions Count</p>
             <h3 className="text-2xl font-black text-slate-900 font-mono mt-1">{payments.length} Payments</h3>
           </div>
@@ -151,7 +151,7 @@ export default function PaymentsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs font-mono">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500 font-sans">
+                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500 font-sans sticky top-0 z-10">
                   <th className="p-4">Date</th>
                   <th className="p-4">Customer</th>
                   <th className="p-4">Amount Paid</th>
@@ -168,8 +168,8 @@ export default function PaymentsPage() {
                     </td>
                   </tr>
                 ) : filteredPayments.length > 0 ? (
-                  filteredPayments.map((p) => (
-                    <tr key={p.id} className="hover:bg-slate-50/80 transition">
+                  filteredPayments.map((p, idx) => (
+                    <tr key={p.id} className={`table-row-hover transition ${idx % 2 === 1 ? 'bg-slate-50/50' : ''}`}>
                       <td className="p-4 text-slate-600">
                         {new Date(p.payment_date).toLocaleDateString('en-GB', {
                           day: '2-digit',

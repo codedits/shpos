@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { CacheManager, CacheKeys, CACHE_TTL } from '@/lib/cache';
+import { compressImage } from '@/lib/imageCompression';
 import {
   Product,
   Customer,
@@ -149,6 +150,45 @@ export const wholesaleService = {
     );
   },
 
+  async uploadProductImage(file: File, productCode = 'prod'): Promise<string> {
+    // 1. Compress image to strictly <= 500KB (maxDimension 1200px)
+    const { file: compressedFile, dataUrl } = await compressImage(file, 500 * 1024, 1200);
+
+    if (supabase) {
+      try {
+        const ext = compressedFile.name.split('.').pop() || 'webp';
+        const cleanCode = productCode.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase() || 'item';
+        const fileName = `${cleanCode}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${ext}`;
+        const filePath = `products/${fileName}`;
+
+        const { data, error } = await supabase.storage
+          .from('product-images')
+          .upload(filePath, compressedFile, {
+            cacheControl: '3600',
+            upsert: true,
+            contentType: compressedFile.type || 'image/webp',
+          });
+
+        if (!error && data) {
+          const { data: publicUrlData } = supabase.storage
+            .from('product-images')
+            .getPublicUrl(filePath);
+
+          if (publicUrlData && publicUrlData.publicUrl) {
+            return publicUrlData.publicUrl;
+          }
+        } else if (error) {
+          console.warn('Supabase storage upload error:', error.message);
+        }
+      } catch (uploadErr) {
+        console.warn('Upload error, falling back to dataUrl:', uploadErr);
+      }
+    }
+
+    // Fallback to compressed dataUrl if storage is offline / local mode
+    return dataUrl;
+  },
+
   async getProductById(id: string): Promise<Product | null> {
     const products = await this.getProducts();
     return products.find((p) => p.id === id) || null;
@@ -162,6 +202,7 @@ export const wholesaleService = {
       lot_cost: parseFloat(input.lot_cost as any) || 0,
       stock_quantity: parseInt(input.stock_quantity as any, 10) || 0,
       is_active: input.is_active ?? true,
+      image_url: input.image_url || null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -179,6 +220,7 @@ export const wholesaleService = {
             stock_quantity: newProduct.stock_quantity,
             lot_cost: newProduct.lot_cost,
             is_active: newProduct.is_active,
+            image_url: newProduct.image_url,
           },
         ])
         .select()
@@ -213,6 +255,7 @@ export const wholesaleService = {
     const updated: Product = {
       ...existing,
       ...input,
+      image_url: input.image_url !== undefined ? input.image_url : existing.image_url,
       updated_at: new Date().toISOString(),
     };
 
@@ -227,6 +270,7 @@ export const wholesaleService = {
           stock_quantity: updated.stock_quantity,
           lot_cost: updated.lot_cost,
           is_active: updated.is_active,
+          image_url: updated.image_url,
           updated_at: updated.updated_at,
         })
         .eq('id', id);

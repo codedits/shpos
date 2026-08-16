@@ -124,7 +124,7 @@ export default function ProductsPage() {
 
             <Link
               href="/products/new"
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg flex items-center space-x-1.5 transition shadow-xs hover:shadow-sm"
+              className="btn-press px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg flex items-center space-x-1.5 transition shadow-xs hover:shadow-sm"
             >
               <Plus className="w-4 h-4" />
               <span>Add New Product</span>
@@ -133,16 +133,16 @@ export default function ProductsPage() {
         </div>
 
         {/* 3 Metric Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 stagger-cards">
+          <div className="bg-white rounded-xl border border-slate-200 accent-card accent-card-indigo p-5 shadow-xs">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Products</p>
             <h3 className="text-2xl font-black text-slate-900 font-mono mt-1">{products.length} Items</h3>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
+          <div className="bg-white rounded-xl border border-slate-200 accent-card accent-card-emerald p-5 shadow-xs">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Available Stock Count</p>
             <h3 className="text-2xl font-black text-emerald-700 font-mono mt-1">{totalStockCount.toLocaleString()} Pcs</h3>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs">
+          <div className="bg-white rounded-xl border border-slate-200 accent-card accent-card-blue p-5 shadow-xs">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Stock Valuation (Lot Cost)</p>
             <h3 className="text-2xl font-black text-slate-900 font-mono mt-1">
               Rs. {totalLotCostSum.toLocaleString('en-US', { minimumFractionDigits: 2 })}
@@ -200,7 +200,8 @@ export default function ProductsPage() {
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500 sticky top-0 z-10">
+                  <th className="p-4 w-12 text-center">Image</th>
                   <th className="p-4">Code</th>
                   <th className="p-4">Product Name</th>
                   <th className="p-4 text-center">Size</th>
@@ -214,7 +215,7 @@ export default function ProductsPage() {
               <tbody className="divide-y divide-slate-100 font-mono">
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="p-10 text-center text-slate-400 uppercase">
+                    <td colSpan={9} className="p-10 text-center text-slate-400 uppercase">
                       Loading products...
                     </td>
                   </tr>
@@ -224,7 +225,22 @@ export default function ProductsPage() {
                     const isLowStock = p.stock_quantity > 0 && p.stock_quantity <= 10;
 
                     return (
-                      <tr key={p.id} className="hover:bg-slate-50/80 transition">
+                      <tr key={p.id} className={`table-row-hover transition ${filteredProducts.indexOf(p) % 2 === 1 ? 'bg-slate-50/50' : ''}`}>
+                        {/* Image Thumbnail */}
+                        <td className="p-3 text-center">
+                          <div className="w-10 h-10 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center shrink-0 mx-auto">
+                            {p.image_url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={p.image_url}
+                                alt={p.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <Package className="w-4 h-4 text-slate-400" />
+                            )}
+                          </div>
+                        </td>
                         <td className="p-4 font-bold text-slate-900">
                           <span className="bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
                             {p.product_code}
@@ -261,14 +277,14 @@ export default function ProductsPage() {
                           <div className="flex items-center justify-end space-x-2">
                             <Link
                               href={`/products/${p.id}/edit`}
-                              className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-700 transition"
+                              className="p-1.5 rounded-md border border-slate-200 hover:bg-slate-100 text-slate-700 transition btn-press"
                               title="Edit Product"
                             >
                               <Edit2 className="w-3.5 h-3.5" />
                             </Link>
                             <button
                               onClick={() => setProductToDelete(p)}
-                              className="p-1.5 rounded-md border border-slate-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 text-slate-700 transition"
+                              className="p-1.5 rounded-md border border-slate-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 text-slate-700 transition btn-press"
                               title="Delete Product"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -280,7 +296,7 @@ export default function ProductsPage() {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={8} className="p-10 text-center text-slate-400 uppercase">
+                    <td colSpan={9} className="p-10 text-center text-slate-400 uppercase">
                       No products found.
                     </td>
                   </tr>
@@ -294,25 +310,39 @@ export default function ProductsPage() {
             {filteredProducts.map((p) => (
               <div key={p.id} className="p-4 space-y-3">
                 <div className="flex items-start justify-between">
-                  <div>
-                    <span className="text-[10px] font-mono font-bold bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                      {p.product_code}
-                    </span>
-                    <h4 className="font-bold text-sm text-slate-900 mt-1">{p.name}</h4>
-                    <p className="text-[11px] text-slate-500 font-mono">
-                      Size: {p.size || '—'} • Color: {p.color || '—'}
-                    </p>
+                  <div className="flex items-center space-x-3">
+                    <div className="w-12 h-12 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center shrink-0">
+                      {p.image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={p.image_url}
+                          alt={p.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <Package className="w-5 h-5 text-slate-400" />
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-mono font-bold bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                        {p.product_code}
+                      </span>
+                      <h4 className="font-bold text-sm text-slate-900 mt-1">{p.name}</h4>
+                      <p className="text-[11px] text-slate-500 font-mono">
+                        Size: {p.size || '—'} • Color: {p.color || '—'}
+                      </p>
+                    </div>
                   </div>
                   <div className="flex items-center space-x-1.5">
                     <Link
                       href={`/products/${p.id}/edit`}
-                      className="p-1.5 rounded border border-slate-200 text-slate-700"
+                      className="p-1.5 rounded border border-slate-200 text-slate-700 btn-press"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </Link>
                     <button
                       onClick={() => setProductToDelete(p)}
-                      className="p-1.5 rounded border border-slate-200 text-rose-600"
+                      className="p-1.5 rounded border border-slate-200 text-rose-600 btn-press"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
