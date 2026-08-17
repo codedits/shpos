@@ -299,12 +299,21 @@ function NewPurchaseForm() {
                 )}
               </div>
 
-              {/* Date with Calendar UI */}
+              {/* Date with Calendar UI & Today Button */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-violet-700" />
-                  <span>Purchase Date (Calendar) *</span>
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5 font-mono">
+                    <Calendar className="w-3.5 h-3.5 text-violet-700" />
+                    <span>Purchase Date *</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setPurchaseDate(new Date().toISOString().split('T')[0])}
+                    className="text-[10px] font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-md transition btn-press font-mono"
+                  >
+                    Today
+                  </button>
+                </div>
                 <input
                   type="date"
                   value={purchaseDate}
@@ -469,20 +478,27 @@ function NewPurchaseForm() {
                 <DollarSign className="w-4 h-4 text-emerald-700" />
                 <span>Payment & Loan (Pay Later)</span>
               </h3>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-1.5 font-mono">
                 <button
                   type="button"
                   onClick={handleQuickPayFull}
-                  className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold hover:bg-emerald-100 transition"
+                  className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold hover:bg-emerald-100 transition btn-press"
                 >
-                  Pay Full (Rs. {Math.round(totalLotPrice).toLocaleString()})
+                  100% Full
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAmountPaidStr(Math.round(totalLotPrice / 2).toString())}
+                  className="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-bold hover:bg-amber-100 transition btn-press"
+                >
+                  50% Half
                 </button>
                 <button
                   type="button"
                   onClick={handleQuickPayZero}
-                  className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 text-[11px] font-bold hover:bg-rose-100 transition"
+                  className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 text-[11px] font-bold hover:bg-rose-100 transition btn-press"
                 >
-                  Full Loan (Rs. 0 Paid)
+                  0% Full Loan
                 </button>
               </div>
             </div>
