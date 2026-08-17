@@ -28,19 +28,31 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // 1.8-second intro display, followed by 1-second smooth cinematic dissolve
+  // Dynamic Image & Asset Preloader — Waits for login background image to fully load before dissolving intro screen
   useEffect(() => {
-    const fadeTimer = setTimeout(() => {
-      setIsFading(true);
-    }, 1800);
+    let isMounted = true;
 
-    const unmountTimer = setTimeout(() => {
-      setShowIntro(false);
-    }, 2800);
+    const bgImg = new window.Image();
+    bgImg.src = '/login_bg.jpg';
+
+    const triggerReveal = () => {
+      if (!isMounted) return;
+      setIsFading(true);
+      setTimeout(() => {
+        if (isMounted) setShowIntro(false);
+      }, 1000);
+    };
+
+    if (bgImg.complete) {
+      // Minimum display time for smooth visual flow
+      setTimeout(triggerReveal, 800);
+    } else {
+      bgImg.onload = () => setTimeout(triggerReveal, 500);
+      bgImg.onerror = () => triggerReveal();
+    }
 
     return () => {
-      clearTimeout(fadeTimer);
-      clearTimeout(unmountTimer);
+      isMounted = false;
     };
   }, []);
 
@@ -189,14 +201,15 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Layer 2: Minimal White Loading Screen with No Extra Info & No Letter Spacing */}
+      {/* Layer 2: Spaced Typography Classical Loading Screen (Dynamic Preloader) */}
       {showIntro && (
         <div
-          className={`fixed inset-0 z-50 bg-white text-slate-900 flex flex-col items-center justify-center p-4 font-sans transition-all duration-1000 ease-in-out ${isFading ? 'opacity-0 pointer-events-none scale-105' : 'opacity-100 scale-100'
-            }`}
+          className={`fixed inset-0 z-50 bg-white text-slate-900 flex flex-col items-center justify-center p-4 font-sans transition-all duration-1000 ease-in-out ${
+            isFading ? 'opacity-0 pointer-events-none scale-105' : 'opacity-100 scale-100'
+          }`}
         >
           <div className="flex flex-col items-center space-y-4 text-center">
-            <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 font-heading uppercase">
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-[0.25em] text-slate-900 font-heading uppercase pl-[0.25em]">
               VEYRO
             </h1>
             <div className="w-32 h-[2px] bg-slate-100 rounded-full overflow-hidden mt-1">

@@ -17,14 +17,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     return (
       <div className="min-h-screen w-full bg-white flex flex-col items-center justify-center p-4 font-sans select-none text-slate-900">
         <div className="flex flex-col items-center space-y-4 animate-scale-in text-center">
-          <div className="space-y-1">
-            <h1 className="text-3xl font-extrabold tracking-[0.25em] text-slate-900 font-heading uppercase pl-[0.25em]">
-              VEYRO
-            </h1>
-            <p className="text-xs font-mono font-medium text-slate-400 tracking-widest uppercase">
-              Wholesale POS Terminal
-            </p>
-          </div>
+          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-[0.25em] text-slate-900 font-heading uppercase pl-[0.25em]">
+            VEYRO
+          </h1>
           <div className="w-32 h-[2px] bg-slate-100 rounded-full overflow-hidden mt-1">
             <div className="h-full bg-slate-900 rounded-full animate-progress" />
           </div>
