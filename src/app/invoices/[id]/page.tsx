@@ -345,9 +345,9 @@ export default function InvoiceDetailPage() {
                       <td className="p-3 text-center text-slate-700">{it.size_snapshot || '—'}</td>
                       <td className="p-3 text-center text-slate-700">{it.color_snapshot || '—'}</td>
                       <td className="p-3 text-right font-bold text-slate-900">{it.quantity} Pcs</td>
-                      <td className="p-3 text-right">Rs. {it.selling_price_per_unit.toFixed(2)}</td>
+                      <td className="p-3 text-right">Rs. {Math.round(it.selling_price_per_unit).toLocaleString()}</td>
                       <td className="p-3 text-right font-bold text-slate-900">
-                        Rs. {it.line_total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        Rs. {Math.round(it.line_total).toLocaleString()}
                       </td>
                     </tr>
                   ))}
@@ -360,7 +360,7 @@ export default function InvoiceDetailPage() {
                     <td className="p-3 text-right text-xs">{totalPiecesCount} Pcs</td>
                     <td className="p-3 text-right font-sans text-slate-500 text-[11px]">Subtotal:</td>
                     <td className="p-3 text-right text-xs">
-                      Rs. {totalInvoiced.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      Rs. {Math.round(totalInvoiced).toLocaleString()}
                     </td>
                   </tr>
                 </tfoot>
@@ -378,7 +378,7 @@ export default function InvoiceDetailPage() {
                     </h4>
                   </div>
                   <span className="text-[11px] font-mono font-bold text-emerald-700">
-                    Total Paid: Rs. {totalPaidAgainstThisInvoice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    Total Paid: Rs. {Math.round(totalPaidAgainstThisInvoice).toLocaleString()}
                   </span>
                 </div>
                 <table className="w-full text-left border-collapse text-xs font-mono">
@@ -405,7 +405,7 @@ export default function InvoiceDetailPage() {
                           {ph.note || (idx === 0 ? 'Advance / Deposit' : `Installment #${idx + 1}`)}
                         </td>
                         <td className="p-2.5 text-right font-bold text-emerald-700">
-                          Rs. {ph.amount_allocated.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          Rs. {Math.round(ph.amount_allocated).toLocaleString()}
                         </td>
                       </tr>
                     ))}
@@ -421,21 +421,21 @@ export default function InvoiceDetailPage() {
                 <div className="flex justify-between text-slate-600">
                   <span>Gross Subtotal ({totalPiecesCount} Pcs):</span>
                   <span className="font-bold text-slate-900">
-                    Rs. {totalInvoiced.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    Rs. {Math.round(totalInvoiced).toLocaleString()}
                   </span>
                 </div>
 
                 {/* 2. Total Invoice Amount */}
                 <div className="flex justify-between text-sm font-black text-slate-900 border-t border-slate-200 pt-2">
                   <span>Current Invoice Total:</span>
-                  <span>Rs. {totalInvoiced.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                  <span>Rs. {Math.round(totalInvoiced).toLocaleString()}</span>
                 </div>
 
                 {/* 3. Total Received Against This Invoice */}
                 <div className="flex justify-between text-slate-700">
                   <span>Amount Paid on This Invoice:</span>
                   <span className="font-bold text-emerald-700">
-                    - Rs. {totalPaidAgainstThisInvoice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    - Rs. {Math.round(totalPaidAgainstThisInvoice).toLocaleString()}
                   </span>
                 </div>
 
@@ -443,7 +443,7 @@ export default function InvoiceDetailPage() {
                 <div className="flex justify-between text-slate-900 font-bold border-t border-slate-200 pt-1.5">
                   <span>Invoice Balance Due:</span>
                   <span className={currentInvoiceRemaining > 0 ? 'text-rose-700 font-black text-sm' : 'text-emerald-700 font-black'}>
-                    Rs. {currentInvoiceRemaining.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    Rs. {Math.round(currentInvoiceRemaining).toLocaleString()}
                   </span>
                 </div>
 
@@ -458,7 +458,7 @@ export default function InvoiceDetailPage() {
                     <div className="flex justify-between text-slate-600 pt-1">
                       <span>Previous Pending Balance:</span>
                       <span className="font-bold text-slate-800">
-                        Rs. {previousAccountBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        Rs. {Math.round(previousAccountBalance).toLocaleString()}
                       </span>
                     </div>
                   )}
@@ -466,14 +466,14 @@ export default function InvoiceDetailPage() {
                   <div className="flex justify-between text-slate-600">
                     <span>This Invoice Due:</span>
                     <span className="font-bold text-slate-800">
-                      Rs. {currentInvoiceRemaining.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      Rs. {Math.round(currentInvoiceRemaining).toLocaleString()}
                     </span>
                   </div>
 
                   <div className="flex justify-between items-center text-slate-900 font-black border-t border-slate-200 pt-1.5 text-xs">
                     <span className="uppercase text-[11px] tracking-wide">Net Total Customer Payable:</span>
                     <span className={`text-sm ${netTotalAccountPayable > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
-                      Rs. {netTotalAccountPayable.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      Rs. {Math.round(netTotalAccountPayable).toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -529,11 +529,11 @@ export default function InvoiceDetailPage() {
                 <div key={idx} className="space-y-0.5">
                   <div className="flex justify-between font-bold text-slate-900">
                     <span>{it.product_name_snapshot}</span>
-                    <span>Rs. {it.line_total.toFixed(2)}</span>
+                    <span>Rs. {Math.round(it.line_total).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between text-[10px] text-slate-500">
                     <span>
-                      {it.quantity} pcs @ Rs. {it.selling_price_per_unit.toFixed(2)}
+                      {it.quantity} pcs @ Rs. {Math.round(it.selling_price_per_unit).toLocaleString()}
                     </span>
                     <span>[{it.size_snapshot || '—'}/{it.color_snapshot || '—'}]</span>
                   </div>
@@ -550,7 +550,7 @@ export default function InvoiceDetailPage() {
                     <span>
                       {new Date(ph.payment_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} ({ph.payment_method})
                     </span>
-                    <span className="font-bold text-slate-900">Rs. {ph.amount_allocated.toFixed(2)}</span>
+                    <span className="font-bold text-slate-900">Rs. {Math.round(ph.amount_allocated).toLocaleString()}</span>
                   </div>
                 ))}
               </div>
@@ -560,30 +560,30 @@ export default function InvoiceDetailPage() {
             <div className="space-y-1 text-xs pt-1">
               <div className="flex justify-between font-bold text-slate-900">
                 <span>TOTAL ({totalPiecesCount} PCS):</span>
-                <span>Rs. {totalInvoiced.toFixed(2)}</span>
+                <span>Rs. {Math.round(totalInvoiced).toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-emerald-700 font-bold">
                 <span>AMOUNT PAID:</span>
-                <span>- Rs. {totalPaidAgainstThisInvoice.toFixed(2)}</span>
+                <span>- Rs. {Math.round(totalPaidAgainstThisInvoice).toLocaleString()}</span>
               </div>
               <div className="flex justify-between font-bold text-slate-900 border-t border-dashed border-slate-300 pt-1">
                 <span>INVOICE DUE:</span>
                 <span className={currentInvoiceRemaining > 0 ? 'text-rose-700 font-black' : 'text-emerald-700'}>
-                  Rs. {currentInvoiceRemaining.toFixed(2)}
+                  Rs. {Math.round(currentInvoiceRemaining).toLocaleString()}
                 </span>
               </div>
 
               {previousAccountBalance > 0 && (
                 <div className="flex justify-between text-[11px] text-slate-600">
                   <span>PREVIOUS DUE:</span>
-                  <span>Rs. {previousAccountBalance.toFixed(2)}</span>
+                  <span>Rs. {Math.round(previousAccountBalance).toLocaleString()}</span>
                 </div>
               )}
 
               <div className="flex justify-between text-slate-900 font-bold border-t border-dashed border-slate-300 pt-1">
                 <span>NET TOTAL DUE:</span>
                 <span className={netTotalAccountPayable > 0 ? 'text-rose-700 font-black' : 'text-emerald-700'}>
-                  Rs. {netTotalAccountPayable.toFixed(2)}
+                  Rs. {Math.round(netTotalAccountPayable).toLocaleString()}
                 </span>
               </div>
             </div>

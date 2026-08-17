@@ -5,29 +5,29 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { wholesaleService } from '@/services/wholesaleService';
-import { Product, Supplier, ProductVariant, FIXED_SIZES, FixedSize } from '@/types/wholesale';
+import { Product, Supplier } from '@/types/wholesale';
 import { useToast } from '@/context/ToastContext';
 import {
   ClipboardList,
   ArrowLeft,
   Plus,
   Trash2,
-  Search,
-  X,
   Save,
-  Package,
   Truck,
+  Calendar,
+  DollarSign,
+  Package,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
 } from 'lucide-react';
 
-interface PurchaseLineItem {
+interface PurchaseRow {
   id: string;
-  product_id: string;
-  variant_id: string | null;
   product_name: string;
-  color: string;
-  size: string;
-  quantity: number;
-  cost_per_unit: number;
+  product_id?: string | null;
+  quantity: number | '';
+  cost_per_unit: number | '';
 }
 
 function NewPurchaseForm() {
@@ -40,30 +40,41 @@ function NewPurchaseForm() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  const [selectedSupplierId, setSelectedSupplierId] = useState<string | ''>('');
-  const [isOtherSource, setIsOtherSource] = useState(false);
-  const [lineItems, setLineItems] = useState<PurchaseLineItem[]>([]);
-  const [advancePayment, setAdvancePayment] = useState(0);
+  // Form State
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
+  const [purchaseDate, setPurchaseDate] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
+  const [rows, setRows] = useState<PurchaseRow[]>([
+    {
+      id: crypto.randomUUID(),
+      product_name: '',
+      product_id: null,
+      quantity: '',
+      cost_per_unit: '',
+    },
+  ]);
+  const [amountPaidStr, setAmountPaidStr] = useState<string>('0');
   const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Bank' | 'Other'>('Cash');
-  const [notes, setNotes] = useState('');
-
-  // Product selection state
-  const [showProductPicker, setShowProductPicker] = useState(false);
-  const [productSearch, setProductSearch] = useState('');
+  const [notes, setNotes] = useState<string>('');
 
   useEffect(() => {
     async function load() {
       try {
         setLoading(true);
-        const [s, p] = await Promise.all([
+        const [sList, pList] = await Promise.all([
           wholesaleService.getSuppliers(),
           wholesaleService.getProducts(),
         ]);
-        setSuppliers(s);
-        setProducts(p.filter((pr) => pr.is_active));
+        setSuppliers(sList);
+        setProducts(pList.filter((p) => p.is_active));
 
         const preselectedSupplier = searchParams.get('supplier_id');
-        if (preselectedSupplier) setSelectedSupplierId(preselectedSupplier);
+        if (preselectedSupplier) {
+          setSelectedSupplierId(preselectedSupplier);
+        } else if (sList.length > 0) {
+          setSelectedSupplierId(sList[0].id);
+        }
       } finally {
         setLoading(false);
       }
@@ -71,85 +82,149 @@ function NewPurchaseForm() {
     load();
   }, [searchParams]);
 
-  const filteredProducts = useMemo(() => {
-    const q = productSearch.toLowerCase().trim();
-    return products.filter((p) => !q || p.name.toLowerCase().includes(q) || p.product_code.toLowerCase().includes(q));
-  }, [products, productSearch]);
+  // Selected supplier details
+  const currentSupplier = useMemo(
+    () => suppliers.find((s) => s.id === selectedSupplierId),
+    [suppliers, selectedSupplierId]
+  );
 
-  const subtotal = useMemo(() => lineItems.reduce((s, li) => s + li.quantity * li.cost_per_unit, 0), [lineItems]);
-  const totalPieces = useMemo(() => lineItems.reduce((s, li) => s + li.quantity, 0), [lineItems]);
-
-  const addVariantLines = (product: Product) => {
-    if (!product.variants || product.variants.length === 0) {
-      // Product without variants — add a single line
-      const existing = lineItems.find((li) => li.product_id === product.id && !li.variant_id);
-      if (existing) { toast.error('Already Added', `${product.name} is already in the list.`); return; }
-      setLineItems([...lineItems, {
+  // Row operations
+  const addRow = () => {
+    setRows([
+      ...rows,
+      {
         id: crypto.randomUUID(),
-        product_id: product.id,
-        variant_id: null,
-        product_name: product.name,
-        color: product.color || '',
-        size: product.size || '',
-        quantity: 1,
-        cost_per_unit: 0,
-      }]);
+        product_name: '',
+        product_id: null,
+        quantity: '',
+        cost_per_unit: '',
+      },
+    ]);
+  };
+
+  const removeRow = (id: string) => {
+    if (rows.length === 1) {
+      setRows([
+        {
+          id: crypto.randomUUID(),
+          product_name: '',
+          product_id: null,
+          quantity: '',
+          cost_per_unit: '',
+        },
+      ]);
     } else {
-      // Add a line for each variant that isn't already present
-      const newLines: PurchaseLineItem[] = [];
-      for (const v of product.variants) {
-        const already = lineItems.find((li) => li.variant_id === v.id);
-        if (!already) {
-          newLines.push({
-            id: crypto.randomUUID(),
-            product_id: product.id,
-            variant_id: v.id,
-            product_name: product.name,
-            color: v.color,
-            size: v.size,
-            quantity: 0,
-            cost_per_unit: 0,
-          });
-        }
-      }
-      if (newLines.length === 0) { toast.error('Already Added', `All variants of ${product.name} are already in the list.`); return; }
-      setLineItems([...lineItems, ...newLines]);
+      setRows(rows.filter((r) => r.id !== id));
     }
-    setShowProductPicker(false);
-    setProductSearch('');
   };
 
-  const updateLine = (id: string, field: keyof PurchaseLineItem, value: any) => {
-    setLineItems(lineItems.map((li) => li.id === id ? { ...li, [field]: value } : li));
+  const updateRow = (id: string, field: keyof PurchaseRow, value: any) => {
+    setRows(
+      rows.map((r) => {
+        if (r.id !== id) return r;
+        return { ...r, [field]: value };
+      })
+    );
   };
 
-  const removeLine = (id: string) => {
-    setLineItems(lineItems.filter((li) => li.id !== id));
+  const handleSelectProduct = (rowId: string, product: Product) => {
+    setRows(
+      rows.map((r) => {
+        if (r.id !== rowId) return r;
+        const defaultUnitCost =
+          product.unit_cost ||
+          (product.stock_quantity > 0
+            ? Math.round(product.lot_cost / product.stock_quantity)
+            : '');
+        return {
+          ...r,
+          product_name: product.name,
+          product_id: product.id,
+          cost_per_unit: defaultUnitCost,
+        };
+      })
+    );
   };
 
-  const handleSubmit = async () => {
-    const validLines = lineItems.filter((li) => li.quantity > 0 && li.cost_per_unit > 0);
-    if (validLines.length === 0) { toast.error('No Items', 'Add at least one item with quantity and cost.'); return; }
-    if (!isOtherSource && !selectedSupplierId) { toast.error('Select Supplier', 'Choose a supplier or mark as "Other Source".'); return; }
+  // Calculations
+  const calculatedRows = useMemo(() => {
+    return rows.map((r) => {
+      const q = typeof r.quantity === 'number' ? r.quantity : 0;
+      const c = typeof r.cost_per_unit === 'number' ? r.cost_per_unit : 0;
+      return {
+        ...r,
+        numericQty: q,
+        numericCost: c,
+        lineTotal: q * c,
+      };
+    });
+  }, [rows]);
+
+  const totalLotPrice = useMemo(() => {
+    return calculatedRows.reduce((sum, r) => sum + r.lineTotal, 0);
+  }, [calculatedRows]);
+
+  const totalPieces = useMemo(() => {
+    return calculatedRows.reduce((sum, r) => sum + r.numericQty, 0);
+  }, [calculatedRows]);
+
+  const amountPaid = parseInt(amountPaidStr, 10) || 0;
+  const loanBalance = Math.max(0, totalLotPrice - amountPaid);
+
+  const handleQuickPayFull = () => {
+    setAmountPaidStr(totalLotPrice.toString());
+  };
+
+  const handleQuickPayZero = () => {
+    setAmountPaidStr('0');
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!selectedSupplierId) {
+      toast.error('Supplier Required', 'Please select a supplier for this purchase.');
+      return;
+    }
+
+    const validRows = calculatedRows.filter(
+      (r) => r.product_name.trim() && r.numericQty > 0 && r.numericCost > 0
+    );
+
+    if (validRows.length === 0) {
+      toast.error(
+        'Validation Error',
+        'Please enter at least one item with Product Name, Quantity > 0, and Unit Price > 0.'
+      );
+      return;
+    }
 
     try {
       setSubmitting(true);
+
       const purchase = await wholesaleService.createPurchase({
-        supplier_id: isOtherSource ? null : selectedSupplierId || null,
-        items: validLines.map((li) => ({
-          product_id: li.product_id,
-          variant_id: li.variant_id,
-          quantity: li.quantity,
-          cost_per_unit: li.cost_per_unit,
-          color_snapshot: li.color,
-          size_snapshot: li.size,
+        supplier_id: selectedSupplierId,
+        purchase_date: new Date(purchaseDate).toISOString(),
+        items: validRows.map((r) => ({
+          product_name: r.product_name.trim(),
+          product_id: r.product_id || null,
+          quantity: r.numericQty,
+          cost_per_unit: r.numericCost,
         })),
-        amount_paid: advancePayment,
+        amount_paid: amountPaid,
         payment_method: paymentMethod,
         notes: notes.trim() || undefined,
       });
-      toast.success('Purchase Created', `${purchase.purchase_number} — ${totalPieces} pcs received. Stock updated.`);
-      router.push('/purchases');
+
+      const message =
+        amountPaid >= totalLotPrice
+          ? `Invoice ${purchase.purchase_number} recorded. Paid in full (Rs. ${totalLotPrice.toLocaleString()}).`
+          : amountPaid > 0
+          ? `Invoice ${purchase.purchase_number} recorded. Paid Rs. ${amountPaid.toLocaleString()}, Loan Rs. ${loanBalance.toLocaleString()}.`
+          : `Invoice ${purchase.purchase_number} recorded. Full Loan of Rs. ${totalLotPrice.toLocaleString()}.`;
+
+      toast.success('Purchase Invoice Created', message);
+      router.push(`/suppliers/${selectedSupplierId}`);
     } catch (err: any) {
       toast.error('Failed to Create Purchase', err.message);
     } finally {
@@ -158,7 +233,13 @@ function NewPurchaseForm() {
   };
 
   if (loading) {
-    return <AppLayout><div className="max-w-5xl mx-auto p-12 text-center font-mono text-xs text-slate-400 uppercase">Loading purchase terminal...</div></AppLayout>;
+    return (
+      <AppLayout>
+        <div className="max-w-5xl mx-auto p-12 text-center font-mono text-xs text-slate-400 uppercase">
+          Loading purchase terminal...
+        </div>
+      </AppLayout>
+    );
   }
 
   return (
@@ -166,145 +247,191 @@ function NewPurchaseForm() {
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 w-full font-sans">
         {/* Header */}
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex items-center space-x-3.5">
-          <Link href="/purchases" className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition btn-press">
+          <Link
+            href="/purchases"
+            className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition btn-press"
+          >
             <ArrowLeft className="w-4 h-4" />
           </Link>
-          <div className="w-9 h-9 rounded-2xl bg-violet-900 flex items-center justify-center text-white">
+          <div className="w-9 h-9 rounded-2xl bg-violet-900 flex items-center justify-center text-white shadow-xs">
             <ClipboardList className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-xl font-extrabold tracking-tight text-slate-900 font-heading">New Purchase / Stock Receipt</h1>
-            <p className="text-xs text-slate-500 mt-0.5">Record incoming stock from a supplier or other source.</p>
+            <h1 className="text-xl font-extrabold tracking-tight text-slate-900 font-heading">
+              Record Supplier Purchase
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Create an invoice for incoming goods, track lot pricing, and manage supplier credit/loan.
+            </p>
           </div>
         </div>
 
-        {/* Supplier Selection */}
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
-          <h3 className="font-extrabold text-sm text-slate-900 font-heading flex items-center space-x-2">
-            <Truck className="w-4 h-4 text-indigo-700" /><span>Source</span>
-          </h3>
-
-          <div className="flex items-center space-x-3">
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <input type="radio" checked={!isOtherSource} onChange={() => setIsOtherSource(false)} className="accent-indigo-900" />
-              <span className="text-xs font-bold text-slate-700">From Supplier</span>
-            </label>
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <input type="radio" checked={isOtherSource} onChange={() => setIsOtherSource(true)} className="accent-indigo-900" />
-              <span className="text-xs font-bold text-slate-700">Other Source (Local Vendor / Direct)</span>
-            </label>
-          </div>
-
-          {!isOtherSource && (
-            <select
-              value={selectedSupplierId}
-              onChange={(e) => setSelectedSupplierId(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-900"
-            >
-              <option value="">Select a supplier...</option>
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>{s.name} {s.phone ? `(${s.phone})` : ''}</option>
-              ))}
-            </select>
-          )}
-        </div>
-
-        {/* Product Selection & Line Items */}
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-extrabold text-sm text-slate-900 font-heading flex items-center space-x-2">
-              <Package className="w-4 h-4 text-violet-700" /><span>Purchase Items</span>
-            </h3>
-            <button
-              onClick={() => setShowProductPicker(true)}
-              className="btn-press px-3.5 py-2 bg-violet-900 hover:bg-violet-800 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 transition"
-            >
-              <Plus className="w-3.5 h-3.5" /><span>Add Product</span>
-            </button>
-          </div>
-
-          {/* Product Picker Modal */}
-          {showProductPicker && (
-            <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50 space-y-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search products by name or code..."
-                  value={productSearch}
-                  onChange={(e) => setProductSearch(e.target.value)}
-                  className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-violet-900"
-                  autoFocus
-                />
-                <button onClick={() => { setShowProductPicker(false); setProductSearch(''); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700">
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-              <div className="max-h-48 overflow-y-auto space-y-1">
-                {filteredProducts.length > 0 ? filteredProducts.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => addVariantLines(p)}
-                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-white border border-transparent hover:border-slate-200 transition flex items-center justify-between"
-                  >
-                    <div>
-                      <span className="text-xs font-bold text-slate-900">{p.name}</span>
-                      <span className="text-[10px] font-mono text-slate-500 ml-2">{p.product_code}</span>
-                    </div>
-                    <span className="text-[10px] font-mono text-slate-400">{p.variants?.length || 0} variants</span>
-                  </button>
-                )) : (
-                  <p className="text-xs text-slate-400 text-center py-3">No products found.</p>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Section 1: Supplier & Date Info */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Supplier Selection */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
+                  <Truck className="w-3.5 h-3.5 text-violet-700" />
+                  <span>Supplier Account *</span>
+                </label>
+                <select
+                  value={selectedSupplierId}
+                  onChange={(e) => setSelectedSupplierId(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-900"
+                  required
+                >
+                  <option value="">-- Choose Supplier --</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} {s.phone ? `(${s.phone})` : ''}
+                    </option>
+                  ))}
+                </select>
+                {currentSupplier && (
+                  <p className="text-[11px] font-mono text-slate-500 pl-1">
+                    Current Outstanding Balance:{' '}
+                    <span className="font-bold text-rose-700">
+                      Rs. {(currentSupplier.total_outstanding || 0).toLocaleString()}
+                    </span>
+                  </p>
                 )}
               </div>
-            </div>
-          )}
 
-          {/* Line Items Table */}
-          {lineItems.length > 0 ? (
+              {/* Date with Calendar UI */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-violet-700" />
+                  <span>Purchase Date (Calendar) *</span>
+                </label>
+                <input
+                  type="date"
+                  value={purchaseDate}
+                  onChange={(e) => setPurchaseDate(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-900 cursor-pointer"
+                  required
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Items (Product Name, Quantity, Unit Price, Total Lot) */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-extrabold text-sm text-slate-900 font-heading flex items-center space-x-2">
+                <Package className="w-4 h-4 text-violet-700" />
+                <span>Purchase Items & Lot Breakdown</span>
+              </h3>
+              <button
+                type="button"
+                onClick={addRow}
+                className="btn-press px-3 py-1.5 rounded-xl bg-violet-50 text-violet-900 border border-violet-200 hover:bg-violet-100 text-xs font-bold flex items-center space-x-1 transition"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Item Line</span>
+              </button>
+            </div>
+
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                    <th className="p-3">Product</th>
-                    <th className="p-3">Color</th>
-                    <th className="p-3">Size</th>
-                    <th className="p-3 text-center">Quantity</th>
-                    <th className="p-3 text-right">Cost/Unit (Rs.)</th>
-                    <th className="p-3 text-right">Line Total</th>
-                    <th className="p-3 text-right"></th>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500 font-mono">
+                    <th className="p-3 pl-4 min-w-[220px]">Product Name</th>
+                    <th className="p-3 text-center w-28">Quantity</th>
+                    <th className="p-3 text-right w-36">Unit Price (Rs.)</th>
+                    <th className="p-3 text-right w-36">Total Lot (Rs.)</th>
+                    <th className="p-3 text-center w-12"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {lineItems.map((li) => (
-                    <tr key={li.id} className="hover:bg-slate-50/60">
-                      <td className="p-3 font-bold text-slate-900">{li.product_name}</td>
-                      <td className="p-3 text-slate-600 font-mono">{li.color || '—'}</td>
-                      <td className="p-3 text-slate-600 font-mono">{li.size || '—'}</td>
-                      <td className="p-3 text-center">
+                <tbody className="divide-y divide-slate-100 font-mono">
+                  {calculatedRows.map((r, index) => (
+                    <tr key={r.id} className="hover:bg-slate-50/60 transition">
+                      {/* Product Name (Input with quick catalog selector) */}
+                      <td className="p-2.5 pl-4">
+                        <div className="space-y-1">
+                          <input
+                            type="text"
+                            placeholder="e.g. Cotton Kurta, Lawn Mexi, Silk Shirt..."
+                            value={r.product_name}
+                            onChange={(e) => updateRow(r.id, 'product_name', e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border border-slate-200 font-sans text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-900"
+                            required
+                          />
+                          {/* Quick selection tags from existing product catalog */}
+                          {products.length > 0 && !r.product_name && (
+                            <div className="flex flex-wrap gap-1 pt-0.5">
+                              <span className="text-[10px] text-slate-400 font-sans mr-1">Quick pick:</span>
+                              {products.slice(0, 4).map((p) => (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  onClick={() => handleSelectProduct(r.id, p)}
+                                  className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 hover:bg-violet-100 hover:text-violet-900 text-slate-600 transition"
+                                >
+                                  {p.name}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Quantity */}
+                      <td className="p-2.5 text-center">
                         <input
                           type="number"
-                          min={0}
-                          value={li.quantity || ''}
-                          onChange={(e) => updateLine(li.id, 'quantity', parseInt(e.target.value) || 0)}
-                          className="w-16 px-2 py-1.5 rounded-lg border border-slate-200 text-center font-mono text-xs focus:outline-none focus:ring-2 focus:ring-violet-900"
+                          min="1"
+                          placeholder="0"
+                          value={r.quantity}
+                          onChange={(e) =>
+                            updateRow(
+                              r.id,
+                              'quantity',
+                              e.target.value === '' ? '' : parseInt(e.target.value, 10) || 0
+                            )
+                          }
+                          className="w-24 px-2.5 py-2 text-center rounded-lg border border-slate-200 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-900"
+                          required
                         />
                       </td>
-                      <td className="p-3 text-right">
+
+                      {/* Unit Price */}
+                      <td className="p-2.5 text-right">
                         <input
                           type="number"
-                          min={0}
-                          value={li.cost_per_unit || ''}
-                          onChange={(e) => updateLine(li.id, 'cost_per_unit', parseFloat(e.target.value) || 0)}
-                          className="w-24 px-2 py-1.5 rounded-lg border border-slate-200 text-right font-mono text-xs focus:outline-none focus:ring-2 focus:ring-violet-900"
+                          min="0"
+                          step="1"
+                          placeholder="0"
+                          value={r.cost_per_unit}
+                          onChange={(e) =>
+                            updateRow(
+                              r.id,
+                              'cost_per_unit',
+                              e.target.value === '' ? '' : parseInt(e.target.value, 10) || 0
+                            )
+                          }
+                          className="w-32 px-2.5 py-2 text-right rounded-lg border border-slate-200 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-900"
+                          required
                         />
                       </td>
-                      <td className="p-3 text-right font-bold font-mono text-slate-900">
-                        Rs. {(li.quantity * li.cost_per_unit).toLocaleString()}
+
+                      {/* Line Total (Unit Price × Quantity) */}
+                      <td className="p-2.5 text-right">
+                        <div className="px-2 py-2 font-mono font-black text-slate-900 text-xs">
+                          Rs. {Math.round(r.lineTotal).toLocaleString()}
+                        </div>
                       </td>
-                      <td className="p-3 text-right">
-                        <button onClick={() => removeLine(li.id)} className="p-1 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition">
-                          <Trash2 className="w-3.5 h-3.5" />
+
+                      {/* Delete */}
+                      <td className="p-2.5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => removeRow(r.id)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                          title="Remove row"
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </td>
                     </tr>
@@ -312,84 +439,153 @@ function NewPurchaseForm() {
                 </tbody>
               </table>
             </div>
-          ) : (
-            <div className="p-8 text-center text-slate-400 text-xs font-mono uppercase border border-dashed border-slate-200 rounded-2xl">
-              Click &quot;Add Product&quot; to select items for this purchase.
-            </div>
-          )}
 
-          {/* Summary */}
-          {lineItems.length > 0 && (
-            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-              <span className="text-xs font-mono text-slate-500">Total: {totalPieces} pieces</span>
-              <span className="text-lg font-black font-mono text-slate-900">Rs. {subtotal.toLocaleString()}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Payment Section */}
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
-          <h3 className="font-extrabold text-sm text-slate-900 font-heading">Advance Payment (Optional)</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Amount</label>
-              <input
-                type="number"
-                min={0}
-                max={subtotal}
-                value={advancePayment || ''}
-                onChange={(e) => setAdvancePayment(parseFloat(e.target.value) || 0)}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-900"
-                placeholder="0"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Method</label>
-              <select
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value as any)}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-900"
-              >
-                <option value="Cash">Cash</option>
-                <option value="Bank">Bank Transfer</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Notes</label>
-              <input
-                type="text"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-900"
-                placeholder="Optional notes..."
-              />
+            {/* Total Lot Summary Banner */}
+            <div className="bg-slate-900 text-white rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono">
+              <div className="flex items-center space-x-4">
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase block">Total Items</span>
+                  <span className="text-sm font-bold">{calculatedRows.length} Product(s)</span>
+                </div>
+                <div className="w-px h-6 bg-slate-700" />
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase block">Total Quantity</span>
+                  <span className="text-sm font-bold">{totalPieces.toLocaleString()} Pieces</span>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] text-slate-400 uppercase block">Total Lot Price</span>
+                <span className="text-xl font-black text-emerald-400">
+                  Rs. {Math.round(totalLotPrice).toLocaleString()}
+                </span>
+              </div>
             </div>
           </div>
 
-          {subtotal > 0 && (
-            <div className="bg-slate-50 rounded-2xl p-4 space-y-2 font-mono text-xs">
-              <div className="flex justify-between"><span className="text-slate-500">Total Purchase Cost</span><span className="font-bold text-slate-900">Rs. {subtotal.toLocaleString()}</span></div>
-              <div className="flex justify-between"><span className="text-slate-500">Advance Payment</span><span className="font-bold text-emerald-700">Rs. {advancePayment.toLocaleString()}</span></div>
-              <div className="flex justify-between border-t border-slate-200 pt-2"><span className="text-slate-900 font-bold">Balance Due to Supplier</span><span className="font-black text-rose-700 text-sm">Rs. {Math.max(subtotal - advancePayment, 0).toLocaleString()}</span></div>
+          {/* Section 3: Payment, Credit & Loan Management */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-extrabold text-sm text-slate-900 font-heading flex items-center space-x-2">
+                <DollarSign className="w-4 h-4 text-emerald-700" />
+                <span>Payment & Loan (Pay Later)</span>
+              </h3>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={handleQuickPayFull}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold hover:bg-emerald-100 transition"
+                >
+                  Pay Full (Rs. {Math.round(totalLotPrice).toLocaleString()})
+                </button>
+                <button
+                  type="button"
+                  onClick={handleQuickPayZero}
+                  className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 text-[11px] font-bold hover:bg-rose-100 transition"
+                >
+                  Full Loan (Rs. 0 Paid)
+                </button>
+              </div>
             </div>
-          )}
-        </div>
 
-        {/* Submit */}
-        <div className="flex justify-end">
-          <button
-            onClick={handleSubmit}
-            disabled={submitting || lineItems.filter(li => li.quantity > 0).length === 0}
-            className={`btn-press px-8 py-3 bg-violet-900 hover:bg-violet-800 text-white rounded-2xl text-sm font-extrabold flex items-center space-x-2.5 shadow-md transition ${
-              submitting ? 'opacity-70 cursor-not-allowed' : ''
-            }`}
-          >
-            {submitting && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-            <Save className="w-4 h-4" />
-            <span>{submitting ? 'Processing...' : `Receive ${totalPieces} Pieces — Rs. ${subtotal.toLocaleString()}`}</span>
-          </button>
-        </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Amount Paid */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  Amount Paid Now (Rs.)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max={totalLotPrice}
+                  step="1"
+                  value={amountPaidStr}
+                  onChange={(e) => setAmountPaidStr(e.target.value)}
+                  placeholder="0"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                />
+              </div>
+
+              {/* Payment Method */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  Payment Method
+                </label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value as any)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                >
+                  <option value="Cash">Cash</option>
+                  <option value="Bank">Bank Transfer</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  Notes / Reference
+                </label>
+                <input
+                  type="text"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="e.g. Bill # 4921, 30 days credit..."
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-700"
+                />
+              </div>
+            </div>
+
+            {/* Financial Ledger Impact Box */}
+            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-2 font-mono text-xs">
+              <div className="flex justify-between items-center text-slate-600">
+                <span>Total Lot Amount</span>
+                <span className="font-bold text-slate-900">
+                  Rs. {Math.round(totalLotPrice).toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-slate-600">
+                <span>Amount Paid Now</span>
+                <span className="font-bold text-emerald-700">
+                  - Rs. {Math.round(amountPaid).toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between items-center border-t border-slate-200 pt-2 text-sm font-black">
+                <span className="text-slate-900">Remaining Loan / Debt Owed to Supplier</span>
+                <span className={loanBalance > 0 ? 'text-rose-700' : 'text-emerald-700'}>
+                  Rs. {Math.round(loanBalance).toLocaleString()}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Submit Action Controls */}
+          <div className="flex items-center justify-end space-x-3 pt-2">
+            <Link
+              href="/purchases"
+              className="btn-press px-5 py-2.5 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition"
+            >
+              Cancel
+            </Link>
+            <button
+              type="submit"
+              disabled={submitting || totalLotPrice <= 0}
+              className={`btn-press px-8 py-3 bg-violet-900 hover:bg-violet-800 text-white rounded-2xl text-xs font-extrabold flex items-center space-x-2 shadow-md transition ${
+                submitting || totalLotPrice <= 0 ? 'opacity-60 cursor-not-allowed' : ''
+              }`}
+            >
+              {submitting && (
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              )}
+              <Save className="w-4 h-4" />
+              <span>
+                {submitting
+                  ? 'Saving Purchase Invoice...'
+                  : `Save Purchase Invoice (Rs. ${totalLotPrice.toLocaleString()})`}
+              </span>
+            </button>
+          </div>
+        </form>
       </div>
     </AppLayout>
   );

@@ -130,11 +130,91 @@ function CreateOrderForm() {
     }));
   };
 
+  const handleOrderMatrixKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    prodId: string,
+    colorIdx: number,
+    sizeIdx: number,
+    prod: Product,
+    color: string,
+    colorVars: ProductVariant[],
+    totalColors: number
+  ) => {
+    const totalCols = FIXED_SIZES.length;
+
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      const targetCol = Math.min(totalCols - 1, sizeIdx + 1);
+      const targetEl = document.querySelector(
+        `input[data-ord-prod="${prodId}"][data-ord-color="${colorIdx}"][data-ord-size="${targetCol}"]`
+      ) as HTMLInputElement;
+      if (targetEl) {
+        targetEl.focus();
+        targetEl.select?.();
+      }
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const targetCol = Math.max(0, sizeIdx - 1);
+      const targetEl = document.querySelector(
+        `input[data-ord-prod="${prodId}"][data-ord-color="${colorIdx}"][data-ord-size="${targetCol}"]`
+      ) as HTMLInputElement;
+      if (targetEl) {
+        targetEl.focus();
+        targetEl.select?.();
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const targetRow = Math.min(totalColors - 1, colorIdx + 1);
+      const targetEl = document.querySelector(
+        `input[data-ord-prod="${prodId}"][data-ord-color="${targetRow}"][data-ord-size="${sizeIdx}"]`
+      ) as HTMLInputElement;
+      if (targetEl) {
+        targetEl.focus();
+        targetEl.select?.();
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const targetRow = Math.max(0, colorIdx - 1);
+      const targetEl = document.querySelector(
+        `input[data-ord-prod="${prodId}"][data-ord-color="${targetRow}"][data-ord-size="${sizeIdx}"]`
+      ) as HTMLInputElement;
+      if (targetEl) {
+        targetEl.focus();
+        targetEl.select?.();
+      }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      // Automatically add this color row to the order cart on Enter!
+      const colorInputs = matrixInputs[prodId]?.[color] || ({} as Record<FixedSize, string>);
+      const totalRowQtyEntered = FIXED_SIZES.reduce(
+        (sum, s) => sum + (parseInt(colorInputs[s], 10) || 0),
+        0
+      );
+
+      if (totalRowQtyEntered > 0) {
+        handleAddMatrixRowToCart(prod, color, colorVars);
+      }
+
+      // Automatically move focus to next color row if available
+      if (colorIdx < totalColors - 1) {
+        setTimeout(() => {
+          const nextRowInput = document.querySelector(
+            `input[data-ord-prod="${prodId}"][data-ord-color="${colorIdx + 1}"][data-ord-size="0"]`
+          ) as HTMLInputElement;
+          if (nextRowInput) {
+            nextRowInput.focus();
+            nextRowInput.select?.();
+          }
+        }, 50);
+      }
+    }
+  };
+
   // Add all non-zero quantities from a color row into the cart
   const handleAddMatrixRowToCart = (prod: Product, color: string, variants: ProductVariant[]) => {
     const colorInputs = matrixInputs[prod.id]?.[color] || ({} as Record<FixedSize, string>);
-    const baseCost = prod.unit_cost || (prod.stock_quantity > 0 ? prod.lot_cost / prod.stock_quantity : 0);
-    const defaultSellingPrice = Math.round(baseCost * 1.2 * 100) / 100; // 20% default markup
+    const baseCost = prod.unit_cost || (prod.stock_quantity > 0 ? Math.round(prod.lot_cost / prod.stock_quantity) : 0);
+    const defaultSellingPrice = prod.selling_price || Math.round(baseCost * 1.2);
 
     let addedCount = 0;
     const newItems: CartItem[] = [];
@@ -215,8 +295,8 @@ function CreateOrderForm() {
     }
 
     const itemKey = `${prod.id}_${variant.color}_${variant.size}`;
-    const baseCost = prod.unit_cost || (prod.stock_quantity > 0 ? prod.lot_cost / prod.stock_quantity : 0);
-    const defaultSellingPrice = Math.round(baseCost * 1.2 * 100) / 100;
+    const baseCost = prod.unit_cost || (prod.stock_quantity > 0 ? Math.round(prod.lot_cost / prod.stock_quantity) : 0);
+    const defaultSellingPrice = prod.selling_price || Math.round(baseCost * 1.2);
 
     setCartItems((prev) => {
       const existingIdx = prev.findIndex((it) => it.key === itemKey);
@@ -267,7 +347,7 @@ function CreateOrderForm() {
 
   const handleUpdateCartSellingPrice = (key: string, price: number) => {
     setCartItems((prev) =>
-      prev.map((item) => (item.key === key ? { ...item, selling_price: Math.max(0, price) } : item))
+      prev.map((item) => (item.key === key ? { ...item, selling_price: Math.max(0, Math.round(price)) } : item))
     );
   };
 
@@ -275,7 +355,7 @@ function CreateOrderForm() {
     setCartItems((prev) =>
       prev.map((item) => {
         if (item.key === key) {
-          const newPrice = Math.round(item.unit_cost * (1 + markupPercent / 100) * 100) / 100;
+          const newPrice = Math.round(item.unit_cost * (1 + markupPercent / 100));
           return { ...item, selling_price: newPrice };
         }
         return item;
@@ -302,11 +382,11 @@ function CreateOrderForm() {
 
   const estimatedProfit = subtotal - totalInternalCost;
 
-  const amountPaid = parseFloat(amountPaidStr) || 0;
+  const amountPaid = parseInt(amountPaidStr, 10) || 0;
   const remainingAmount = Math.max(0, subtotal - amountPaid);
 
   const handleQuickPay = (ratio: number) => {
-    const val = Math.round(subtotal * ratio * 100) / 100;
+    const val = Math.round(subtotal * ratio);
     setAmountPaidStr(val.toString());
   };
 
@@ -515,7 +595,7 @@ function CreateOrderForm() {
                       {/* Expanded Matrix Wholesale Entry View */}
                       {isExpanded && (
                         <div className="p-4 sm:p-5 space-y-4 bg-white animate-fade-in">
-                          {Object.entries(colorGroups).map(([color, colorVars]) => {
+                          {Object.entries(colorGroups).map(([color, colorVars], colorIdx, colorEntries) => {
                             const colorInputs = matrixInputs[prod.id]?.[color] || ({} as Record<FixedSize, string>);
                             const totalRowQtyEntered = FIXED_SIZES.reduce(
                               (sum, s) => sum + (parseInt(colorInputs[s], 10) || 0),
@@ -557,7 +637,7 @@ function CreateOrderForm() {
 
                                 {/* 5 Fixed Size Input Boxes for Wholesale Matrix Entry */}
                                 <div className="grid grid-cols-5 gap-2">
-                                  {FIXED_SIZES.map((size) => {
+                                  {FIXED_SIZES.map((size, sizeIdx) => {
                                     const variant = colorVars.find((v) => v.size === size);
                                     const avail = variant ? variant.stock_quantity : 0;
                                     const inputVal = colorInputs[size] || '';
@@ -584,9 +664,24 @@ function CreateOrderForm() {
                                           max={avail}
                                           disabled={isOutOfStock}
                                           placeholder="0"
+                                          data-ord-prod={prod.id}
+                                          data-ord-color={colorIdx}
+                                          data-ord-size={sizeIdx}
                                           value={inputVal}
                                           onChange={(e) =>
                                             handleMatrixInputChange(prod.id, color, size, e.target.value)
+                                          }
+                                          onKeyDown={(e) =>
+                                            handleOrderMatrixKeyDown(
+                                              e,
+                                              prod.id,
+                                              colorIdx,
+                                              sizeIdx,
+                                              prod,
+                                              color,
+                                              colorVars,
+                                              colorEntries.length
+                                            )
                                           }
                                           className="w-full p-1 text-center text-xs font-mono font-black text-slate-900 focus:outline-none bg-transparent"
                                         />
@@ -751,18 +846,18 @@ function CreateOrderForm() {
                               <input
                                 type="number"
                                 min="0"
-                                step="0.01"
+                                step="1"
                                 value={it.selling_price}
                                 onChange={(e) =>
-                                  handleUpdateCartSellingPrice(it.key, parseFloat(e.target.value) || 0)
+                                  handleUpdateCartSellingPrice(it.key, parseInt(e.target.value, 10) || 0)
                                 }
-                                className="w-full p-1 mt-0.5 text-right text-xs font-bold rounded border border-slate-300 bg-white"
+                                className="w-full p-1 mt-0.5 text-right text-xs font-bold rounded border border-slate-300 bg-white font-mono"
                               />
                             </div>
                           </div>
 
-                          <div className="text-right font-bold text-xs text-slate-900 pt-0.5">
-                            Line Total: Rs. {lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          <div className="text-right font-bold text-xs text-slate-900 pt-0.5 font-mono">
+                            Line Total: Rs. {Math.round(lineTotal).toLocaleString()}
                           </div>
                         </div>
                       );
@@ -780,7 +875,7 @@ function CreateOrderForm() {
                 <div className="flex justify-between text-slate-700">
                   <span>Gross Order Subtotal:</span>
                   <span className="font-bold text-slate-900 text-sm">
-                    Rs. {subtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    Rs. {Math.round(subtotal).toLocaleString()}
                   </span>
                 </div>
 
@@ -818,10 +913,10 @@ function CreateOrderForm() {
                     type="number"
                     min="0"
                     max={subtotal}
-                    step="0.01"
+                    step="1"
                     value={amountPaidStr}
                     onChange={(e) => setAmountPaidStr(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold text-emerald-700 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold text-emerald-700 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 font-mono"
                   />
                 </div>
 
@@ -852,7 +947,7 @@ function CreateOrderForm() {
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center text-xs">
                   <span className="font-bold text-slate-700">Remaining Balance Due:</span>
                   <span className={`font-black text-sm ${remainingAmount > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
-                    Rs. {remainingAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    Rs. {Math.round(remainingAmount).toLocaleString()}
                   </span>
                 </div>
 

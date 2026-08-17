@@ -113,7 +113,7 @@ function RecordPaymentForm() {
       toast.warning('Customer Required', 'Please select a customer account.');
       return;
     }
-    const amt = parseFloat(amountStr);
+    const amt = parseInt(amountStr, 10);
     if (isNaN(amt) || amt <= 0) {
       setErrorMessage('Payment amount must be greater than zero.');
       toast.error('Invalid Amount', 'Payment amount must be greater than zero.');
@@ -200,7 +200,7 @@ function RecordPaymentForm() {
             <div>
               <span className="text-slate-500 block uppercase text-[10px] font-bold">Total Outstanding Balance:</span>
               <span className={`text-xl font-black ${(selectedCustomer.total_outstanding || 0) > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
-                Rs. {(selectedCustomer.total_outstanding || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                Rs. {Math.round(selectedCustomer.total_outstanding || 0).toLocaleString()}
               </span>
             </div>
 

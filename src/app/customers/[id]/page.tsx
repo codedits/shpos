@@ -193,7 +193,7 @@ export default function CustomerProfilePage() {
               Total Billed (Invoiced)
             </span>
             <div className="text-2xl font-black text-slate-900 font-mono">
-              Rs. {(customer.total_billed || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              Rs. {Math.round(customer.total_billed || 0).toLocaleString()}
             </div>
             <p className="text-xs text-slate-500 font-mono">{orders.length} total orders booked</p>
           </div>
@@ -203,7 +203,7 @@ export default function CustomerProfilePage() {
               Total Cash Collected
             </span>
             <div className="text-2xl font-black text-emerald-700 font-mono">
-              Rs. {(customer.total_paid || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              Rs. {Math.round(customer.total_paid || 0).toLocaleString()}
             </div>
             <p className="text-xs text-slate-500 font-mono">{payments.length} receipts recorded</p>
           </div>
@@ -213,7 +213,7 @@ export default function CustomerProfilePage() {
               Net Outstanding Balance Due
             </span>
             <div className={`text-2xl font-black font-mono ${hasOutstanding ? 'text-rose-700' : 'text-slate-900'}`}>
-              Rs. {(customer.total_outstanding || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              Rs. {Math.round(customer.total_outstanding || 0).toLocaleString()}
             </div>
             <p className="text-xs text-slate-500 font-mono">
               {hasOutstanding ? 'Pending settlement' : 'Account fully cleared'}

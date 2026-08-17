@@ -13,6 +13,7 @@ import {
   X,
   RefreshCw,
   CheckCircle2,
+  Printer,
 } from 'lucide-react';
 
 export default function PurchasesPage() {
@@ -154,7 +155,16 @@ export default function PurchasesPage() {
                       }`}>{p.is_voided ? 'VOIDED' : p.payment_status.replace('_', ' ')}</span>
                     </td>
                     <td className="p-4 text-right">
-                      <Link href={`/purchases/${p.id}`} className="text-xs font-bold text-slate-900 hover:underline">View →</Link>
+                      <div className="flex items-center justify-end space-x-2">
+                        <Link
+                          href={`/purchases/${p.id}`}
+                          className="btn-press px-2.5 py-1 rounded-xl bg-violet-50 text-violet-900 border border-violet-200 hover:bg-violet-100 text-xs font-bold transition flex items-center space-x-1"
+                          title="View & Print Voucher"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                          <span>Print Voucher</span>
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 )) : (

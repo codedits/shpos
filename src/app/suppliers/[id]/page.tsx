@@ -20,6 +20,7 @@ import {
   Trash2,
   AlertCircle,
   CheckCircle2,
+  Printer,
 } from 'lucide-react';
 
 export default function SupplierProfilePage() {
@@ -180,6 +181,14 @@ export default function SupplierProfilePage() {
             >
               <Plus className="w-4 h-4" /><span>New Purchase</span>
             </Link>
+            <button
+              type="button"
+              onClick={() => typeof window !== 'undefined' && window.print()}
+              className="btn-press px-3.5 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-2xl flex items-center space-x-1.5 transition shadow-xs"
+              title="Print Supplier Ledger Statement"
+            >
+              <Printer className="w-4 h-4" /><span>Print Statement</span>
+            </button>
             <button onClick={() => setDeleteModalOpen(true)} className="btn-press p-2.5 rounded-2xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 transition">
               <Trash2 className="w-4 h-4" />
             </button>
@@ -190,18 +199,18 @@ export default function SupplierProfilePage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-xs space-y-1">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">Total Purchased</span>
-            <div className="text-2xl font-black text-slate-900 font-mono">Rs. {(supplier.total_purchased || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+            <div className="text-2xl font-black text-slate-900 font-mono">Rs. {Math.round(supplier.total_purchased || 0).toLocaleString()}</div>
             <p className="text-xs text-slate-500 font-mono">{purchases.filter(p => !p.is_voided).length} purchases recorded</p>
           </div>
           <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-xs space-y-1">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">Total Paid to Supplier</span>
-            <div className="text-2xl font-black text-emerald-700 font-mono">Rs. {(supplier.total_paid || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+            <div className="text-2xl font-black text-emerald-700 font-mono">Rs. {Math.round(supplier.total_paid || 0).toLocaleString()}</div>
             <p className="text-xs text-slate-500 font-mono">{payments.filter(p => !p.is_voided).length} payments made</p>
           </div>
           <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-xs space-y-1">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">We Still Owe</span>
             <div className={`text-2xl font-black font-mono ${hasOutstanding ? 'text-rose-700' : 'text-slate-900'}`}>
-              Rs. {(supplier.total_outstanding || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              Rs. {Math.round(supplier.total_outstanding || 0).toLocaleString()}
             </div>
             <p className="text-xs text-slate-500 font-mono">{hasOutstanding ? 'Pending settlement' : 'Fully settled'}</p>
           </div>
@@ -217,46 +226,69 @@ export default function SupplierProfilePage() {
             <table className="w-full text-left border-collapse text-xs font-mono">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  <th className="p-3.5 pl-4">Purchase #</th>
+                  <th className="p-3.5 pl-4">Invoice #</th>
                   <th className="p-3.5">Date</th>
-                  <th className="p-3.5 text-right">Total Cost</th>
-                  <th className="p-3.5 text-right">Paid</th>
-                  <th className="p-3.5 text-right">Balance</th>
+                  <th className="p-3.5">Products / Items</th>
+                  <th className="p-3.5 text-right">Total Lot Price</th>
+                  <th className="p-3.5 text-right">Amount Paid</th>
+                  <th className="p-3.5 text-right">Remaining Loan</th>
                   <th className="p-3.5 text-center">Status</th>
                   <th className="p-3.5 text-right pr-4">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {purchases.length > 0 ? purchases.map((p) => (
-                  <tr key={p.id} className={`hover:bg-slate-50/60 transition ${p.is_voided ? 'opacity-40 line-through' : ''}`}>
-                    <td className="p-3.5 pl-4 font-bold text-slate-900">
-                      <Link href={`/purchases/${p.id}`} className="hover:underline">{p.purchase_number}</Link>
-                    </td>
-                    <td className="p-3.5 text-slate-500">{formatDatePKT(p.purchase_date, false)}</td>
-                    <td className="p-3.5 text-right font-bold text-slate-900">Rs. {p.total_cost.toLocaleString()}</td>
-                    <td className="p-3.5 text-right text-emerald-700 font-semibold">Rs. {p.amount_paid.toLocaleString()}</td>
-                    <td className="p-3.5 text-right font-bold text-rose-700">Rs. {p.remaining_amount.toLocaleString()}</td>
-                    <td className="p-3.5 text-center">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                        p.is_voided ? 'bg-slate-100 text-slate-500' :
-                        p.payment_status === 'PAID' ? 'bg-emerald-50 text-emerald-800' :
-                        p.payment_status === 'PARTIALLY_PAID' ? 'bg-amber-50 text-amber-800' :
-                        'bg-rose-50 text-rose-800'
-                      }`}>
-                        {p.is_voided ? 'VOIDED' : p.payment_status.replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td className="p-3.5 text-right pr-4">
-                      {!p.is_voided && (
-                        <button
-                          onClick={() => setVoidTarget(p)}
-                          className="text-xs font-bold text-rose-600 hover:underline"
-                        >Void</button>
-                      )}
-                    </td>
-                  </tr>
-                )) : (
-                  <tr><td colSpan={7} className="p-8 text-center text-slate-400 text-xs">No purchases recorded yet.</td></tr>
+                {purchases.length > 0 ? purchases.map((p) => {
+                  const productNames = (p.items || []).map((i) => i.product_name_snapshot).filter(Boolean);
+                  const displayNames = productNames.length > 0 ? productNames.join(', ') : 'Garment Lot';
+                  const totalQty = (p.items || []).reduce((s, i) => s + i.quantity, 0);
+
+                  return (
+                    <tr key={p.id} className={`hover:bg-slate-50/60 transition ${p.is_voided ? 'opacity-40 line-through' : ''}`}>
+                      <td className="p-3.5 pl-4 font-bold text-slate-900">
+                        <Link href={`/purchases/${p.id}`} className="hover:underline">{p.purchase_number}</Link>
+                      </td>
+                      <td className="p-3.5 text-slate-500">{formatDatePKT(p.purchase_date, false)}</td>
+                      <td className="p-3.5 font-sans">
+                        <span className="font-bold text-slate-900 block truncate max-w-[200px]">{displayNames}</span>
+                        {totalQty > 0 && <span className="text-[10px] font-mono text-slate-400">{totalQty} pcs total</span>}
+                      </td>
+                      <td className="p-3.5 text-right font-bold text-slate-900">Rs. {p.total_cost.toLocaleString()}</td>
+                      <td className="p-3.5 text-right text-emerald-700 font-semibold">Rs. {p.amount_paid.toLocaleString()}</td>
+                      <td className="p-3.5 text-right font-bold text-rose-700">Rs. {p.remaining_amount.toLocaleString()}</td>
+                      <td className="p-3.5 text-center">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                          p.is_voided ? 'bg-slate-100 text-slate-500' :
+                          p.payment_status === 'PAID' ? 'bg-emerald-50 text-emerald-800' :
+                          p.payment_status === 'PARTIALLY_PAID' ? 'bg-amber-50 text-amber-800' :
+                          'bg-rose-50 text-rose-800'
+                        }`}>
+                          {p.is_voided ? 'VOIDED' : p.payment_status === 'UNPAID' ? 'LOAN (DUE)' : p.payment_status.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="p-3.5 text-right pr-4">
+                        <div className="flex items-center justify-end space-x-2">
+                          <Link
+                            href={`/purchases/${p.id}`}
+                            className="btn-press px-2 py-1 rounded-lg bg-violet-50 text-violet-900 border border-violet-200 hover:bg-violet-100 text-[11px] font-bold transition flex items-center space-x-1"
+                            title="View & Print Voucher"
+                          >
+                            <Printer className="w-3 h-3" />
+                            <span>Voucher</span>
+                          </Link>
+                          {!p.is_voided && (
+                            <button
+                              onClick={() => setVoidTarget(p)}
+                              className="text-[11px] font-bold text-rose-600 hover:underline px-1"
+                            >
+                              Void
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }) : (
+                  <tr><td colSpan={8} className="p-8 text-center text-slate-400 text-xs">No purchase invoices recorded yet.</td></tr>
                 )}
               </tbody>
             </table>

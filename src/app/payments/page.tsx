@@ -125,7 +125,7 @@ export default function PaymentsPage() {
           <div className="bg-white rounded-xl border border-slate-200 accent-card accent-card-emerald p-5 shadow-xs">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Cash Realized</p>
             <h3 className="text-2xl font-black text-emerald-700 font-mono mt-1">
-              Rs. {totalCollectedSum.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              Rs. {Math.round(totalCollectedSum).toLocaleString()}
             </h3>
           </div>
           <div className="bg-white rounded-xl border border-slate-200 accent-card accent-card-blue p-5 shadow-xs">
@@ -218,10 +218,10 @@ export default function PaymentsPage() {
                       <td className="p-4 font-bold text-emerald-700">
                         {p.is_voided ? (
                           <span className="line-through text-slate-400">
-                            Rs. {p.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            Rs. {Math.round(p.amount).toLocaleString()}
                           </span>
                         ) : (
-                          `Rs. ${p.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+                          `Rs. ${Math.round(p.amount).toLocaleString()}`
                         )}
                       </td>
                       <td className="p-4 text-center">

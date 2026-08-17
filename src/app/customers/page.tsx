@@ -300,7 +300,7 @@ export default function CustomersPage() {
                         <td className="p-4 font-mono font-bold">
                           {hasDebt ? (
                             <span className="text-rose-700">
-                              Rs. {(c.total_outstanding || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                              Rs. {Math.round(c.total_outstanding || 0).toLocaleString()}
                             </span>
                           ) : (
                             <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold uppercase">

@@ -116,21 +116,21 @@ export default function InvoicesListPage() {
           <div className="bg-white rounded-xl border border-slate-200 accent-card accent-card-blue p-5 shadow-xs">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Sales Invoiced</p>
             <h3 className="text-2xl font-black text-slate-900 font-mono mt-1">
-              Rs. {totalInvoicedAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              Rs. {Math.round(totalInvoicedAmount).toLocaleString()}
             </h3>
             <p className="text-[11px] text-slate-400 font-mono mt-0.5">{activeOrders.length} active invoices</p>
           </div>
           <div className="bg-white rounded-xl border border-slate-200 accent-card accent-card-emerald p-5 shadow-xs">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Cash Collected</p>
             <h3 className="text-2xl font-black text-emerald-700 font-mono mt-1">
-              Rs. {totalCollectedAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              Rs. {Math.round(totalCollectedAmount).toLocaleString()}
             </h3>
             <p className="text-[11px] text-emerald-600/70 font-mono mt-0.5">Realized revenue</p>
           </div>
           <div className="bg-white rounded-xl border border-slate-200 accent-card accent-card-rose p-5 shadow-xs">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Remaining Unpaid Balance</p>
             <h3 className="text-2xl font-black text-rose-700 font-mono mt-1">
-              Rs. {totalOutstandingDue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              Rs. {Math.round(totalOutstandingDue).toLocaleString()}
             </h3>
             <p className="text-[11px] text-rose-600/70 font-mono mt-0.5">Pending market credit</p>
           </div>
@@ -229,13 +229,13 @@ export default function InvoicesListPage() {
                           })}
                         </td>
                         <td className={`p-4 font-bold ${isVoided ? 'line-through text-slate-400' : 'text-slate-900'}`}>
-                          Rs. {o.total_amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          Rs. {Math.round(o.total_amount).toLocaleString()}
                         </td>
                         <td className="p-4 font-bold text-emerald-700">
-                          Rs. {o.amount_paid.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          Rs. {Math.round(o.amount_paid).toLocaleString()}
                         </td>
                         <td className={`p-4 font-bold ${remainingDue > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
-                          Rs. {remainingDue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          Rs. {Math.round(remainingDue).toLocaleString()}
                         </td>
                         <td className="p-4 text-center">
                           {isVoided ? (

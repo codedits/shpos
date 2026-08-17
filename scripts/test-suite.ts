@@ -112,6 +112,8 @@ async function runTestSuite() {
           product_code: testCode,
           name: 'Embroidered Cotton Kurta Test',
           stock_quantity: 60,
+          unit_cost: 1000.0,
+          selling_price: 1500.0,
           lot_cost: 60000.0,
           is_active: true,
         },
@@ -333,35 +335,30 @@ async function runTestSuite() {
     );
 
     // -------------------------------------------------------------
-    // TEST 8: Purchase Creation (Atomic Stock Receipt / Inflow)
+    // TEST 8: Simplified Purchase Creation & Supplier Loan Tracking
     // -------------------------------------------------------------
-    console.log('\n\x1b[36m[TEST SUITE 8/11] Atomic Purchase & Stock Receipt (Inventory Inflow)\x1b[0m');
-    // We add 50 pcs of Black/Medium (@ Rs. 1,000 cost) and 20 pcs of Black/Large (@ Rs. 1,100 cost)
-    // Total cost = 50 * 1000 + 20 * 1100 = 50,000 + 22,000 = 72,000
-    // Advance paid = Rs. 20,000 -> Remaining payable = Rs. 52,000
+    console.log('\n\x1b[36m[TEST SUITE 8/11] Streamlined Purchase Invoicing & Supplier Loan Tracking\x1b[0m');
+    // Invoice with 2 garment lots:
+    // Lot 1: 50 pcs of "Cotton Kurta" @ Rs. 1,000 unit price = Rs. 50,000
+    // Lot 2: 20 pcs of "Lawn Mexi" @ Rs. 1,100 unit price = Rs. 22,000
+    // Total Lot Price = Rs. 72,000. Advance Paid = Rs. 20,000 -> Remaining Loan / Debt = Rs. 52,000
     const { data: purRpcRes, error: purRpcErr } = await supabase.rpc('create_purchase', {
       p_supplier_id: testSupplierId,
       p_items: [
         {
-          product_id: testProductId,
-          variant_id: variantBMId,
+          product_name: 'Cotton Kurta',
           quantity: 50,
           cost_per_unit: 1000,
-          color_snapshot: 'Black',
-          size_snapshot: 'Medium',
         },
         {
-          product_id: testProductId,
-          variant_id: variantBLId,
+          product_name: 'Lawn Mexi',
           quantity: 20,
           cost_per_unit: 1100,
-          color_snapshot: 'Black',
-          size_snapshot: 'Large',
         },
       ],
       p_amount_paid: 20000,
       p_payment_method: 'Bank',
-      p_notes: 'Automated test purchase batch #1',
+      p_notes: 'Automated test streamlined purchase invoice',
     });
 
     assert(!purRpcErr && !!purRpcRes?.purchase_id, 'Execute create_purchase Stored Procedure', `PUR ID: ${purRpcRes?.purchase_id}`);
@@ -372,19 +369,10 @@ async function runTestSuite() {
       parseFloat(purRpcRes?.amount_paid) === 20000 &&
       parseFloat(purRpcRes?.remaining_amount) === 52000 &&
       purRpcRes?.payment_status === 'PARTIALLY_PAID',
-      'Purchase Calculation & Partial Status (72k total, 20k paid, 52k due)'
+      'Purchase Lot Calculation & Loan Balance (72k total, 20k paid, 52k loan remaining)'
     );
 
-    // Verify stock INCREMENT on product variants (was 35 BM -> now 85, was 10 BL -> now 30)
-    const { data: vBM_afterPur } = await supabase.from('product_variants').select('stock_quantity').eq('id', variantBMId).single();
-    const { data: vBL_afterPur } = await supabase.from('product_variants').select('stock_quantity').eq('id', variantBLId).single();
-    const { data: p_afterPur } = await supabase.from('products').select('stock_quantity').eq('id', testProductId).single();
-
-    assert(vBM_afterPur?.stock_quantity === 85, 'Variant Black/Medium Stock Incremented from 35 to 85 pcs (+50)');
-    assert(vBL_afterPur?.stock_quantity === 30, 'Variant Black/Large Stock Incremented from 10 to 30 pcs (+20)');
-    assert(p_afterPur?.stock_quantity === 130, 'Product Aggregate Stock Incremented from 60 to 130 pcs (+70)');
-
-    // Verify Supplier Ledger after Purchase + Advance Payment
+    // Verify Supplier Ledger after Purchase + Partial Payment
     const { data: suppBal1 } = await supabase
       .from('supplier_balances_view')
       .select('*')
@@ -396,7 +384,7 @@ async function runTestSuite() {
       parseFloat(suppBal1?.total_paid) === 20000 &&
       parseFloat(suppBal1?.total_outstanding) === 52000 &&
       parseInt(suppBal1?.total_purchases_count) === 1,
-      'Supplier Ledger Accurately Reflects Purchase & Advance Payment (52,000 Outstanding)'
+      'Supplier Ledger Accurately Reflects Purchase & Advance Payment (52,000 Loan Outstanding)'
     );
 
     // -------------------------------------------------------------
@@ -451,24 +439,15 @@ async function runTestSuite() {
     );
 
     // -------------------------------------------------------------
-    // TEST 11: Purchase Voiding (Stock & Financial Reversal)
+    // TEST 11: Purchase Voiding & Financial Loan Reversal
     // -------------------------------------------------------------
-    console.log('\n\x1b[36m[TEST SUITE 11/11] Purchase Voiding & Stock Subtraction Reversal\x1b[0m');
+    console.log('\n\x1b[36m[TEST SUITE 11/11] Purchase Voiding & Financial Loan Reversal\x1b[0m');
     const { data: voidPurRes, error: voidPurErr } = await supabase.rpc('void_purchase', {
       p_purchase_id: testPurchaseId,
       p_void_reason: 'Voided in test suite',
     });
 
     assert(!voidPurErr && voidPurRes?.voided === true, 'Execute void_purchase Stored Procedure');
-
-    // Verify stock has been subtracted back to baseline (was 85 BM -> now 35, was 30 BL -> now 10)
-    const { data: vBM_final } = await supabase.from('product_variants').select('stock_quantity').eq('id', variantBMId).single();
-    const { data: vBL_final } = await supabase.from('product_variants').select('stock_quantity').eq('id', variantBLId).single();
-    const { data: p_final } = await supabase.from('products').select('stock_quantity').eq('id', testProductId).single();
-
-    assert(vBM_final?.stock_quantity === 35, 'Variant Black/Medium Stock Reversed Back to 35 pcs (-50)');
-    assert(vBL_final?.stock_quantity === 10, 'Variant Black/Large Stock Reversed Back to 10 pcs (-20)');
-    assert(p_final?.stock_quantity === 60, 'Product Aggregate Stock Reversed Back to 60 pcs (-70)');
 
     const { data: purFinal } = await supabase.from('purchases').select('is_voided, remaining_amount').eq('id', testPurchaseId).single();
     assert(purFinal?.is_voided === true && purFinal?.remaining_amount === 0, 'Purchase Marked is_voided=TRUE with 0.00 Remaining');

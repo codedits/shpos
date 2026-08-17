@@ -18,6 +18,7 @@ import {
   Supplier,
   Purchase,
   PurchaseItem,
+  PurchasePaymentHistory,
   SupplierPayment,
   CreatePurchaseInput,
   RecordSupplierPaymentInput,
@@ -132,15 +133,16 @@ export const wholesaleService = {
             ? variants.reduce((sum: number, v: any) => sum + v.stock_quantity, 0)
             : parseInt(p.stock_quantity as any, 10) || 0;
 
+          const unitCost = parseInt(p.unit_cost as any, 10) || (totalVariantStock > 0 ? Math.round(parseFloat(p.lot_cost as any) / totalVariantStock) : 0);
+          const sellingPrice = parseInt(p.selling_price as any, 10) || Math.round(unitCost * 1.2);
+
           return {
             ...p,
-            lot_cost: parseFloat(p.lot_cost as any) || 0,
+            lot_cost: parseFloat(p.lot_cost as any) || (unitCost * totalVariantStock),
             stock_quantity: totalVariantStock,
             variants,
-            unit_cost:
-              totalVariantStock > 0
-                ? parseFloat(((p.lot_cost as any) / totalVariantStock).toFixed(2))
-                : 0,
+            unit_cost: unitCost,
+            selling_price: sellingPrice,
           };
         });
       },
@@ -157,37 +159,21 @@ export const wholesaleService = {
     const { file: compressedFile, dataUrl } = await compressImage(file, 500 * 1024, 1200);
 
     if (supabase) {
-      try {
-        const ext = compressedFile.name.split('.').pop() || 'webp';
-        const cleanCode = productCode.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase() || 'item';
-        const fileName = `${cleanCode}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${ext}`;
-        const filePath = `products/${fileName}`;
+      const fileName = `${productCode}_${Date.now()}.${compressedFile.type.split('/')[1] || 'jpg'}`;
 
-        const { data, error } = await supabase.storage
-          .from('product-images')
-          .upload(filePath, compressedFile, {
-            cacheControl: '3600',
-            upsert: true,
-            contentType: compressedFile.type || 'image/webp',
-          });
+      const { data, error } = await supabase.storage
+        .from('product-images')
+        .upload(fileName, compressedFile, {
+          cacheControl: '3600',
+          upsert: true,
+        });
 
-        if (!error && data) {
-          const { data: publicUrlData } = supabase.storage
-            .from('product-images')
-            .getPublicUrl(filePath);
-
-          if (publicUrlData && publicUrlData.publicUrl) {
-            return publicUrlData.publicUrl;
-          }
-        } else if (error) {
-          console.warn('Supabase storage upload error:', error.message);
-        }
-      } catch (uploadErr) {
-        console.warn('Upload error, falling back to dataUrl:', uploadErr);
+      if (!error && data) {
+        const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(fileName);
+        return urlData.publicUrl;
       }
     }
 
-    // Fallback to compressed dataUrl if storage is offline / local mode
     return dataUrl;
   },
 
@@ -217,15 +203,16 @@ export const wholesaleService = {
           ? variants.reduce((sum: number, v: any) => sum + v.stock_quantity, 0)
           : parseInt(data.stock_quantity as any, 10) || 0;
 
+        const unitCost = parseInt(data.unit_cost as any, 10) || (totalVariantStock > 0 ? Math.round(parseFloat(data.lot_cost as any) / totalVariantStock) : 0);
+        const sellingPrice = parseInt(data.selling_price as any, 10) || Math.round(unitCost * 1.2);
+
         return {
           ...data,
-          lot_cost: parseFloat(data.lot_cost as any) || 0,
+          lot_cost: parseFloat(data.lot_cost as any) || (unitCost * totalVariantStock),
           stock_quantity: totalVariantStock,
           variants,
-          unit_cost:
-            totalVariantStock > 0
-              ? parseFloat(((data.lot_cost as any) / totalVariantStock).toFixed(2))
-              : 0,
+          unit_cost: unitCost,
+          selling_price: sellingPrice,
         };
       }
     }
@@ -235,7 +222,7 @@ export const wholesaleService = {
   },
 
   async createProduct(
-    input: Omit<Product, 'id' | 'created_at' | 'updated_at' | 'unit_cost'>,
+    input: Omit<Product, 'id' | 'created_at' | 'updated_at'>,
     variantsInput?: Array<{ color: string; size: any; stock_quantity: number }>
   ): Promise<Product> {
     const id = generateUUID();
@@ -246,10 +233,16 @@ export const wholesaleService = {
       ? initialVariants.reduce((sum, v) => sum + (parseInt(v.stock_quantity as any, 10) || 0), 0)
       : parseInt(input.stock_quantity as any, 10) || 0;
 
+    const unitCost = parseInt(input.unit_cost as any, 10) || 0;
+    const sellingPrice = parseInt(input.selling_price as any, 10) || Math.round(unitCost * 1.2);
+    const lotCost = unitCost * totalStock;
+
     const newProduct: Product = {
       ...input,
       id,
-      lot_cost: parseFloat(input.lot_cost as any) || 0,
+      unit_cost: unitCost,
+      selling_price: sellingPrice,
+      lot_cost: lotCost,
       stock_quantity: totalStock,
       is_active: input.is_active ?? true,
       image_url: input.image_url || null,
@@ -269,6 +262,8 @@ export const wholesaleService = {
             size: newProduct.size || null,
             color: newProduct.color || null,
             stock_quantity: newProduct.stock_quantity,
+            unit_cost: newProduct.unit_cost,
+            selling_price: newProduct.selling_price,
             lot_cost: newProduct.lot_cost,
             is_active: newProduct.is_active,
             image_url: newProduct.image_url,
@@ -324,13 +319,7 @@ export const wholesaleService = {
     // Invalidate cache
     CacheManager.invalidate([CacheKeys.PRODUCTS]);
 
-    return {
-      ...newProduct,
-      unit_cost:
-        newProduct.stock_quantity > 0
-          ? parseFloat((newProduct.lot_cost / newProduct.stock_quantity).toFixed(2))
-          : 0,
-    };
+    return newProduct;
   },
 
   async updateProduct(
@@ -346,9 +335,16 @@ export const wholesaleService = {
       ? initialVariants.reduce((sum, v) => sum + (parseInt(v.stock_quantity as any, 10) || 0), 0)
       : input.stock_quantity !== undefined ? parseInt(input.stock_quantity as any, 10) || 0 : existing.stock_quantity;
 
+    const unitCost = input.unit_cost !== undefined ? parseInt(input.unit_cost as any, 10) || 0 : existing.unit_cost;
+    const sellingPrice = input.selling_price !== undefined ? parseInt(input.selling_price as any, 10) || 0 : existing.selling_price;
+    const lotCost = unitCost * totalStock;
+
     const updated: Product = {
       ...existing,
       ...input,
+      unit_cost: unitCost,
+      selling_price: sellingPrice,
+      lot_cost: lotCost,
       stock_quantity: totalStock,
       image_url: input.image_url !== undefined ? input.image_url : existing.image_url,
       updated_at: new Date().toISOString(),
@@ -364,6 +360,8 @@ export const wholesaleService = {
           size: updated.size || null,
           color: updated.color || null,
           stock_quantity: updated.stock_quantity,
+          unit_cost: updated.unit_cost,
+          selling_price: updated.selling_price,
           lot_cost: updated.lot_cost,
           is_active: updated.is_active,
           image_url: updated.image_url,
@@ -1709,9 +1707,84 @@ export const wholesaleService = {
     );
   },
 
-  async getPurchaseById(id: string): Promise<Purchase | null> {
+  async getPurchaseById(idOrNumber: string): Promise<Purchase | null> {
+    if (supabase) {
+      const isUUID = idOrNumber.includes('-') && idOrNumber.length > 20;
+      const query = supabase
+        .from('purchases')
+        .select(`
+          *,
+          supplier:suppliers(*),
+          items:purchase_items(*)
+        `);
+
+      const { data, error } = isUUID
+        ? await query.eq('id', idOrNumber).single()
+        : await query.eq('purchase_number', idOrNumber).single();
+
+      if (!error && data) {
+        // Fetch payment allocations for this purchase
+        const { data: allocData } = await supabase
+          .from('supplier_payment_allocations')
+          .select(`
+            id,
+            supplier_payment_id,
+            purchase_id,
+            amount_allocated,
+            created_at,
+            payment:supplier_payments(id, amount, payment_date, payment_method, note, is_voided)
+          `)
+          .eq('purchase_id', data.id)
+          .order('created_at', { ascending: true });
+
+        const paymentsHistory: PurchasePaymentHistory[] = (allocData || [])
+          .filter((a: any) => !a.payment?.is_voided)
+          .map((a: any) => ({
+            id: a.id,
+            payment_id: a.supplier_payment_id,
+            amount_allocated: parseFloat(a.amount_allocated) || 0,
+            payment_date: a.payment?.payment_date || a.created_at,
+            payment_method: a.payment?.payment_method || 'Cash',
+            note: a.payment?.note || null,
+          }));
+
+        return {
+          id: data.id,
+          purchase_number: data.purchase_number,
+          supplier_id: data.supplier_id,
+          supplier: data.supplier || null,
+          purchase_date: data.purchase_date,
+          total_cost: parseFloat(data.total_cost) || 0,
+          amount_paid: parseFloat(data.amount_paid) || 0,
+          remaining_amount: parseFloat(data.remaining_amount) || 0,
+          payment_status: data.payment_status,
+          notes: data.notes,
+          idempotency_key: data.idempotency_key,
+          is_voided: data.is_voided ?? false,
+          voided_at: data.voided_at,
+          void_reason: data.void_reason,
+          created_at: data.created_at,
+          updated_at: data.updated_at,
+          items: (data.items || []).map((it: any) => ({
+            id: it.id,
+            purchase_id: it.purchase_id,
+            product_id: it.product_id,
+            variant_id: it.variant_id,
+            product_name_snapshot: it.product_name_snapshot,
+            color_snapshot: it.color_snapshot,
+            size_snapshot: it.size_snapshot,
+            quantity: it.quantity,
+            cost_per_unit: parseFloat(it.cost_per_unit) || 0,
+            line_total: parseFloat(it.line_total) || 0,
+            created_at: it.created_at,
+          })),
+          payments_history: paymentsHistory,
+        };
+      }
+    }
+
     const purchases = await this.getPurchases();
-    return purchases.find((p) => p.id === id) || null;
+    return purchases.find((p) => p.id === idOrNumber || p.purchase_number === idOrNumber) || null;
   },
 
   async createPurchase(input: CreatePurchaseInput): Promise<Purchase> {
@@ -1721,7 +1794,8 @@ export const wholesaleService = {
       const { data, error } = await supabase.rpc('create_purchase', {
         p_supplier_id: input.supplier_id || null,
         p_items: input.items.map((it) => ({
-          product_id: it.product_id,
+          product_name: it.product_name,
+          product_id: it.product_id || null,
           variant_id: it.variant_id || null,
           quantity: it.quantity,
           cost_per_unit: it.cost_per_unit,

@@ -41,10 +41,94 @@ export const VariantMatrixEditor: React.FC<VariantMatrixEditorProps> = ({
       XL: 0,
     };
 
-    onChange([...matrix, { color: trimmed, sizes: defaultSizes }]);
+    const newMatrix = [...matrix, { color: trimmed, sizes: defaultSizes }];
+    onChange(newMatrix);
     setNewColorInput('');
-    setShowAddColor(false);
+    setShowAddColor(true); // Keep color input open for fast consecutive entries
     setError(null);
+
+    // Focus newly created row's first input (Small size) after DOM render
+    setTimeout(() => {
+      const nextRowFirstInput = document.querySelector(
+        `input[data-vm-row="${newMatrix.length - 1}"][data-vm-col="0"]`
+      ) as HTMLInputElement;
+      if (nextRowFirstInput) {
+        nextRowFirstInput.focus();
+        nextRowFirstInput.select?.();
+      }
+    }, 50);
+  };
+
+  const handleKeyDownMatrixCell = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    rowIdx: number,
+    colIdx: number
+  ) => {
+    const totalRows = matrix.length;
+    const totalCols = FIXED_SIZES.length;
+
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      const targetCol = Math.min(totalCols - 1, colIdx + 1);
+      const targetEl = document.querySelector(
+        `input[data-vm-row="${rowIdx}"][data-vm-col="${targetCol}"]`
+      ) as HTMLInputElement;
+      if (targetEl) {
+        targetEl.focus();
+        targetEl.select?.();
+      }
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const targetCol = Math.max(0, colIdx - 1);
+      const targetEl = document.querySelector(
+        `input[data-vm-row="${rowIdx}"][data-vm-col="${targetCol}"]`
+      ) as HTMLInputElement;
+      if (targetEl) {
+        targetEl.focus();
+        targetEl.select?.();
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const targetRow = Math.min(totalRows - 1, rowIdx + 1);
+      const targetEl = document.querySelector(
+        `input[data-vm-row="${targetRow}"][data-vm-col="${colIdx}"]`
+      ) as HTMLInputElement;
+      if (targetEl) {
+        targetEl.focus();
+        targetEl.select?.();
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const targetRow = Math.max(0, rowIdx - 1);
+      const targetEl = document.querySelector(
+        `input[data-vm-row="${targetRow}"][data-vm-col="${colIdx}"]`
+      ) as HTMLInputElement;
+      if (targetEl) {
+        targetEl.focus();
+        targetEl.select?.();
+      }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (rowIdx < totalRows - 1) {
+        // Focus next row's same size input
+        const nextEl = document.querySelector(
+          `input[data-vm-row="${rowIdx + 1}"][data-vm-col="${colIdx}"]`
+        ) as HTMLInputElement;
+        if (nextEl) {
+          nextEl.focus();
+          nextEl.select?.();
+        }
+      } else {
+        // If on last row, open/focus Add Color input
+        setShowAddColor(true);
+        setTimeout(() => {
+          const colorInput = document.querySelector('input[data-add-color-input="true"]') as HTMLInputElement;
+          if (colorInput) {
+            colorInput.focus();
+          }
+        }, 50);
+      }
+    }
   };
 
   const handleRemoveColor = (index: number) => {
@@ -70,23 +154,6 @@ export const VariantMatrixEditor: React.FC<VariantMatrixEditorProps> = ({
     onChange(updated);
   };
 
-  const handleQuickFill = (colorIdx: number, defaultQty = 10) => {
-    const updated = matrix.map((row, idx) => {
-      if (idx !== colorIdx) return row;
-      return {
-        ...row,
-        sizes: {
-          Small: defaultQty,
-          Medium: defaultQty,
-          Large: defaultQty,
-          Standard: defaultQty,
-          XL: defaultQty,
-        },
-      };
-    });
-    onChange(updated);
-  };
-
   const getRowTotal = (row: VariantMatrixRow) => {
     return Object.values(row.sizes).reduce((sum, q) => sum + (q || 0), 0);
   };
@@ -106,7 +173,7 @@ export const VariantMatrixEditor: React.FC<VariantMatrixEditorProps> = ({
               Color × Size Inventory Matrix
             </h4>
             <p className="text-[11px] text-slate-400">
-              5 Fixed Sizes (Small, Medium, Large, Standard, XL) per color
+              Use ↑ ↓ ← → arrow keys to navigate matrix. Press Enter on Color field to add continuously.
             </p>
           </div>
         </div>
@@ -168,8 +235,8 @@ export const VariantMatrixEditor: React.FC<VariantMatrixEditorProps> = ({
                       </div>
                     </td>
 
-                    {/* 5 Fixed Size Input Cells */}
-                    {FIXED_SIZES.map((size) => {
+                    {/* 5 Fixed Size Input Cells with 2D Keyboard Navigation */}
+                    {FIXED_SIZES.map((size, colIdx) => {
                       const qty = row.sizes[size] ?? 0;
                       return (
                         <td key={size} className="p-2 text-center">
@@ -178,9 +245,12 @@ export const VariantMatrixEditor: React.FC<VariantMatrixEditorProps> = ({
                             min="0"
                             step="1"
                             disabled={disabled}
+                            data-vm-row={rowIdx}
+                            data-vm-col={colIdx}
                             value={qty === 0 ? '' : qty}
                             placeholder="0"
                             onChange={(e) => handleQuantityChange(rowIdx, size, e.target.value)}
+                            onKeyDown={(e) => handleKeyDownMatrixCell(e, rowIdx, colIdx)}
                             className={`w-14 sm:w-16 p-1.5 text-center text-xs font-mono font-bold rounded-lg border focus:outline-none transition ${
                               qty > 0
                                 ? 'border-slate-900 bg-slate-50 text-slate-900 focus:ring-1 focus:ring-slate-900'
@@ -237,6 +307,7 @@ export const VariantMatrixEditor: React.FC<VariantMatrixEditorProps> = ({
             <input
               type="text"
               autoFocus
+              data-add-color-input="true"
               placeholder="Enter color name (e.g. Maroon, Off-White)..."
               value={newColorInput}
               onChange={(e) => setNewColorInput(e.target.value)}

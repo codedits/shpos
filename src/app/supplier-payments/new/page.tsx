@@ -88,7 +88,7 @@ function RecordSupplierPaymentForm() {
     setSelectedPurchaseId('');
     const supp = suppliers.find((s) => s.id === id);
     if (supp && supp.total_outstanding) {
-      setAmountStr(supp.total_outstanding.toString());
+      setAmountStr(Math.round(supp.total_outstanding).toString());
     } else {
       setAmountStr('');
     }
@@ -99,10 +99,10 @@ function RecordSupplierPaymentForm() {
     if (purId) {
       const target = purchases.find((p) => p.id === purId || p.purchase_number === purId);
       if (target) {
-        setAmountStr(target.remaining_amount.toString());
+        setAmountStr(Math.round(target.remaining_amount).toString());
       }
     } else if (selectedSupplier && selectedSupplier.total_outstanding) {
-      setAmountStr(selectedSupplier.total_outstanding.toString());
+      setAmountStr(Math.round(selectedSupplier.total_outstanding).toString());
     }
   };
 
@@ -110,7 +110,7 @@ function RecordSupplierPaymentForm() {
     e.preventDefault();
     setErrorMessage(null);
 
-    const amount = parseFloat(amountStr);
+    const amount = parseInt(amountStr, 10);
     if (isNaN(amount) || amount <= 0) {
       setErrorMessage('Please enter a valid payment amount greater than zero.');
       return;
@@ -201,7 +201,7 @@ function RecordSupplierPaymentForm() {
               <option value="">-- Choose Supplier --</option>
               {suppliers.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.name} (Owed: Rs. {(s.total_outstanding || 0).toLocaleString()})
+                  {s.name} (Owed: Rs. {Math.round(s.total_outstanding || 0).toLocaleString()})
                 </option>
               ))}
             </select>
@@ -213,7 +213,7 @@ function RecordSupplierPaymentForm() {
               <div>
                 <span className="text-slate-500 block text-[10px] uppercase font-bold">Total Current Balance We Owe</span>
                 <span className={`text-xl font-black ${(selectedSupplier.total_outstanding || 0) > 0 ? 'text-rose-700' : 'text-slate-900'}`}>
-                  Rs. {(selectedSupplier.total_outstanding || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  Rs. {Math.round(selectedSupplier.total_outstanding || 0).toLocaleString()}
                 </span>
               </div>
               <div className="text-slate-500">
@@ -237,7 +237,7 @@ function RecordSupplierPaymentForm() {
                 <option value="">Auto-allocate across oldest purchases (FIFO)</option>
                 {supplierUnpaidPurchases.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.purchase_number} — Remaining: Rs. {p.remaining_amount.toLocaleString()}
+                    {p.purchase_number} — Remaining: Rs. {Math.round(p.remaining_amount).toLocaleString()}
                   </option>
                 ))}
               </select>
@@ -253,11 +253,11 @@ function RecordSupplierPaymentForm() {
               </label>
               <input
                 type="number"
-                step="0.01"
-                min="0.01"
+                step="1"
+                min="1"
                 value={amountStr}
                 onChange={(e) => setAmountStr(e.target.value)}
-                placeholder="0.00"
+                placeholder="0"
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-700"
                 required
               />

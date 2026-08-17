@@ -145,7 +145,7 @@ export default function ProductsPage() {
           <div className="bg-white rounded-xl border border-slate-200 accent-card accent-card-blue p-5 shadow-xs">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Stock Valuation (Lot Cost)</p>
             <h3 className="text-2xl font-black text-slate-900 font-mono mt-1">
-              Rs. {totalLotCostSum.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              Rs. {Math.round(totalLotCostSum).toLocaleString()}
             </h3>
           </div>
         </div>
@@ -207,15 +207,16 @@ export default function ProductsPage() {
                   <th className="p-4 text-center">Size</th>
                   <th className="p-4 text-center">Color</th>
                   <th className="p-4 text-center">Stock Status</th>
-                  <th className="p-4">Total Lot Cost</th>
-                  <th className="p-4">Unit Cost</th>
+                  <th className="p-4">Cost Price</th>
+                  <th className="p-4">Selling Price</th>
+                  <th className="p-4">Stock Valuation</th>
                   <th className="p-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-mono">
                 {loading ? (
                   <tr>
-                    <td colSpan={9} className="p-10 text-center text-slate-400 uppercase">
+                    <td colSpan={10} className="p-10 text-center text-slate-400 uppercase">
                       Loading products...
                     </td>
                   </tr>
@@ -223,6 +224,9 @@ export default function ProductsPage() {
                   filteredProducts.map((p) => {
                     const isOutOfStock = p.stock_quantity <= 0;
                     const isLowStock = p.stock_quantity > 0 && p.stock_quantity <= 10;
+                    const costPrice = Math.round(p.unit_cost || 0);
+                    const sellingPrice = Math.round(p.selling_price || (costPrice * 1.2));
+                    const stockValuation = costPrice * p.stock_quantity;
 
                     return (
                       <tr key={p.id} className={`table-row-hover transition ${filteredProducts.indexOf(p) % 2 === 1 ? 'bg-slate-50/50' : ''}`}>
@@ -290,11 +294,14 @@ export default function ProductsPage() {
                             </span>
                           )}
                         </td>
-                        <td className="p-4 font-bold text-slate-900">
-                          Rs. {p.lot_cost.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        <td className="p-4 font-bold text-slate-700">
+                          Rs. {costPrice.toLocaleString()}
                         </td>
-                        <td className="p-4 text-slate-600">
-                          Rs. {p.unit_cost?.toFixed(2) || '0.00'}
+                        <td className="p-4 font-extrabold text-emerald-700">
+                          Rs. {sellingPrice.toLocaleString()}
+                        </td>
+                        <td className="p-4 font-bold text-slate-900">
+                          Rs. {stockValuation.toLocaleString()}
                         </td>
                         <td className="p-4 text-right font-sans">
                           <div className="flex items-center justify-end space-x-2">

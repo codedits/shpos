@@ -29,13 +29,14 @@ export interface Product {
   color?: string | null;
   stock_quantity: number;
   lot_cost: number;
+  unit_cost: number;
+  selling_price: number;
   is_active: boolean;
   image_url?: string | null;
   created_at: string;
   updated_at: string;
   // Variant relationships & computed properties
   variants?: ProductVariant[];
-  unit_cost?: number;
 }
 
 export interface Customer {
@@ -242,6 +243,15 @@ export interface PurchaseItem {
   created_at: string;
 }
 
+export interface PurchasePaymentHistory {
+  id: string;
+  payment_id: string;
+  amount_allocated: number;
+  payment_date: string;
+  payment_method: string;
+  note?: string | null;
+}
+
 export interface Purchase {
   id: string;
   purchase_number: string;
@@ -260,6 +270,7 @@ export interface Purchase {
   created_at: string;
   updated_at: string;
   items?: PurchaseItem[];
+  payments_history?: PurchasePaymentHistory[];
 }
 
 export interface SupplierPaymentAllocation {
@@ -288,7 +299,8 @@ export interface SupplierPayment {
 }
 
 export interface CreatePurchaseItemInput {
-  product_id: string;
+  product_name: string;
+  product_id?: string | null;
   variant_id?: string | null;
   quantity: number;
   cost_per_unit: number;

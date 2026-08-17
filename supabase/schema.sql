@@ -323,8 +323,8 @@ CREATE TABLE IF NOT EXISTS public.purchases (
 CREATE TABLE IF NOT EXISTS public.purchase_items (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   purchase_id UUID NOT NULL REFERENCES public.purchases(id) ON DELETE CASCADE,
-  product_id UUID NOT NULL REFERENCES public.products(id) ON DELETE RESTRICT,
-  variant_id UUID REFERENCES public.product_variants(id) ON DELETE RESTRICT,
+  product_id UUID REFERENCES public.products(id) ON DELETE SET NULL,
+  variant_id UUID REFERENCES public.product_variants(id) ON DELETE SET NULL,
   product_name_snapshot TEXT NOT NULL,
   color_snapshot TEXT,
   size_snapshot TEXT,

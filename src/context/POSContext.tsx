@@ -538,11 +538,16 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setProducts((prev) => [newProd, ...prev]);
 
+    const costPrice = (newProd as any).costPrice || (newProd as any).unit_cost || 0;
+    const sellingPrice = (newProd as any).sellingPrice || (newProd as any).selling_price || Math.round(costPrice * 1.2);
+
     wholesaleService.createProduct({
       product_code: newProd.sku || `PRD-${Date.now().toString().slice(-4)}`,
       name: newProd.name,
       stock_quantity: newProd.stock,
-      lot_cost: (newProd.costPrice || 0) * newProd.stock,
+      unit_cost: costPrice,
+      selling_price: sellingPrice,
+      lot_cost: costPrice * newProd.stock,
       is_active: true,
     }).catch(console.error);
 
@@ -552,10 +557,15 @@ export const POSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateProduct = (updated: Product) => {
     setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
 
+    const costPrice = (updated as any).costPrice || (updated as any).unit_cost || 0;
+    const sellingPrice = (updated as any).sellingPrice || (updated as any).selling_price || Math.round(costPrice * 1.2);
+
     wholesaleService.updateProduct(updated.id, {
       name: updated.name,
       stock_quantity: updated.stock,
-      lot_cost: (updated.costPrice || 0) * updated.stock,
+      unit_cost: costPrice,
+      selling_price: sellingPrice,
+      lot_cost: costPrice * updated.stock,
     }).catch(console.error);
   };
 

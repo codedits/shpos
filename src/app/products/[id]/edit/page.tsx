@@ -28,7 +28,8 @@ export default function EditProductPage() {
   const [formData, setFormData] = useState({
     product_code: '',
     name: '',
-    lot_cost: '',
+    unit_cost: '',
+    selling_price: '',
   });
 
   const [matrix, setMatrix] = useState<VariantMatrixRow[]>([]);
@@ -56,7 +57,8 @@ export default function EditProductPage() {
         setFormData({
           product_code: p.product_code,
           name: p.name,
-          lot_cost: p.lot_cost.toString(),
+          unit_cost: (p.unit_cost || 0).toString(),
+          selling_price: (p.selling_price || Math.round((p.unit_cost || 0) * 1.2)).toString(),
         });
 
         if (p.image_url) {
@@ -115,8 +117,10 @@ export default function EditProductPage() {
     return sum + Object.values(row.sizes).reduce((s, q) => s + (q || 0), 0);
   }, 0);
 
-  const previewLotCost = parseFloat(formData.lot_cost) || 0;
-  const previewUnitCost = totalVariantStock > 0 ? (previewLotCost / totalVariantStock).toFixed(2) : '0.00';
+  const costPrice = parseInt(formData.unit_cost, 10) || 0;
+  const sellingPrice = parseInt(formData.selling_price, 10) || 0;
+  const previewLotValuation = costPrice * totalVariantStock;
+  const expectedProfitPerPc = sellingPrice - costPrice;
 
   const validateForm = () => {
     const errors: Record<string, string> = {};
@@ -126,9 +130,11 @@ export default function EditProductPage() {
     if (!formData.name.trim()) {
       errors.name = 'Product name is required.';
     }
-    const lotCost = parseFloat(formData.lot_cost);
-    if (isNaN(lotCost) || lotCost < 0) {
-      errors.lot_cost = 'Lot cost must be a non-negative number.';
+    if (isNaN(costPrice) || costPrice < 0) {
+      errors.unit_cost = 'Cost price must be a non-negative number.';
+    }
+    if (isNaN(sellingPrice) || sellingPrice < 0) {
+      errors.selling_price = 'Selling price must be a non-negative number.';
     }
     if (matrix.length === 0) {
       errors.matrix = 'Please add at least one color to the inventory matrix.';
@@ -145,8 +151,6 @@ export default function EditProductPage() {
       toast.warning('Please fix the form errors before saving.');
       return;
     }
-
-    const lotCost = parseFloat(formData.lot_cost) || 0;
 
     // Convert matrix rows into discrete variant inputs matching existing IDs if present
     const flatVariants: Array<{ id?: string; color: string; size: FixedSize; stock_quantity: number }> = [];
@@ -168,16 +172,12 @@ export default function EditProductPage() {
     try {
       setSubmitting(true);
 
-      // Upload new image if selected
       let finalImageUrl = existingImageUrl;
       if (imageFile) {
         finalImageUrl = await wholesaleService.uploadProductImage(
           imageFile,
           formData.product_code.trim().toUpperCase()
         );
-      } else if (!imagePreview) {
-        // User removed the image
-        finalImageUrl = null;
       }
 
       await wholesaleService.updateProduct(
@@ -186,20 +186,23 @@ export default function EditProductPage() {
           product_code: formData.product_code.trim().toUpperCase(),
           name: formData.name.trim(),
           stock_quantity: totalVariantStock,
-          lot_cost: lotCost,
+          lot_cost: previewLotValuation,
+          unit_cost: costPrice,
+          selling_price: sellingPrice,
           image_url: finalImageUrl,
         },
         flatVariants
       );
 
       toast.success(
-        'Product Updated Successfully',
-        `${formData.name} (${formData.product_code}) matrix (${totalVariantStock} pcs total) updated.`
+        `Product "${formData.name.trim()}" updated successfully!`
       );
       router.push('/products');
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to update product.');
-      toast.error('Could Not Update Product', err.message);
+      console.error('Failed to update product:', err);
+      setErrorMessage(err.message || 'An error occurred while updating the product.');
+      toast.error('Failed to update product.');
+    } finally {
       setSubmitting(false);
     }
   };
@@ -316,41 +319,81 @@ export default function EditProductPage() {
             )}
           </div>
 
-          {/* Lot Cost & Valuation Section */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-2 border-t border-slate-100">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5 font-mono">
-                Total Lot Purchase Cost (Rs.) *
-              </label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                required
-                value={formData.lot_cost}
-                onChange={(e) => setFormData({ ...formData, lot_cost: e.target.value })}
-                className={`w-full p-3 rounded-xl border text-xs font-mono font-bold focus:outline-none transition ${
-                  fieldErrors.lot_cost
-                    ? 'border-rose-500 bg-rose-50/30 text-rose-900 focus:ring-1 focus:ring-rose-500'
-                    : 'border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-slate-900'
-                }`}
-              />
+          {/* Cost Price & Wholesale Selling Price Section */}
+          <div className="space-y-4 pt-2 border-t border-slate-100">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              {/* Cost Price (Unit Cost) */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5 font-mono">
+                  Cost Price / Piece (Rs.) *
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  required
+                  placeholder="e.g. 500"
+                  value={formData.unit_cost}
+                  onChange={(e) => setFormData({ ...formData, unit_cost: e.target.value })}
+                  className={`w-full p-3 rounded-xl border text-xs font-mono font-bold focus:outline-none transition ${
+                    fieldErrors.unit_cost
+                      ? 'border-rose-500 bg-rose-50/30 text-rose-900 focus:ring-1 focus:ring-rose-500'
+                      : 'border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-slate-900'
+                  }`}
+                />
+                <p className="text-[11px] text-slate-500 font-mono mt-1">
+                  Supplier purchase cost per individual piece.
+                </p>
+              </div>
+
+              {/* Wholesale Selling Price */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5 font-mono">
+                  Wholesale Selling Price / Piece (Rs.) *
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  required
+                  placeholder="e.g. 700"
+                  value={formData.selling_price}
+                  onChange={(e) => setFormData({ ...formData, selling_price: e.target.value })}
+                  className={`w-full p-3 rounded-xl border text-xs font-mono font-bold focus:outline-none transition ${
+                    fieldErrors.selling_price
+                      ? 'border-rose-500 bg-rose-50/30 text-rose-900 focus:ring-1 focus:ring-rose-500'
+                      : 'border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-slate-900'
+                  }`}
+                />
+                <p className="text-[11px] text-slate-500 font-mono mt-1">
+                  Default wholesale selling price per piece for customer orders.
+                </p>
+              </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5 font-mono">
-                Recalculated Unit Cost / Pc
-              </label>
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between font-mono">
-                <div>
-                  <span className="text-[10px] text-slate-400 block uppercase">Formula: Lot Cost ÷ Total Pieces</span>
-                  <span className="text-sm font-extrabold text-emerald-700">
-                    Rs. {previewUnitCost} <span className="text-xs font-normal text-slate-500">/ Piece</span>
-                  </span>
-                </div>
-                <div className="text-right text-[11px] text-slate-500">
-                  <span>{totalVariantStock} Pcs Total</span>
-                </div>
+            {/* Live Financial & Stock Summary Banner */}
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-4 font-mono text-xs">
+              <div>
+                <span className="text-[10px] text-slate-400 block uppercase">Total Stock Quantity</span>
+                <span className="text-sm font-extrabold text-slate-900">{totalVariantStock} Pcs Total</span>
+              </div>
+
+              <div>
+                <span className="text-[10px] text-slate-400 block uppercase">Total Stock Valuation</span>
+                <span className="text-sm font-extrabold text-slate-900">
+                  Rs. {previewLotValuation.toLocaleString()}
+                </span>
+                <span className="text-[10px] text-slate-500 block">({costPrice} × {totalVariantStock} pcs)</span>
+              </div>
+
+              <div>
+                <span className="text-[10px] text-slate-400 block uppercase">Expected Profit / Pc</span>
+                <span className={`text-sm font-extrabold ${expectedProfitPerPc >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                  Rs. {expectedProfitPerPc.toLocaleString()} / pc
+                </span>
+                <span className="text-[10px] text-slate-500 block">
+                  ({sellingPrice} - {costPrice})
+                </span>
               </div>
             </div>
           </div>

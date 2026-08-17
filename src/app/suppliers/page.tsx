@@ -223,7 +223,7 @@ export default function SuppliersPage() {
                         <td className="p-4 text-center font-mono font-bold text-slate-700">{s.total_purchases_count || 0}</td>
                         <td className="p-4 font-mono font-bold">
                           {hasDebt ? (
-                            <span className="text-rose-700">Rs. {(s.total_outstanding || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                            <span className="text-rose-700">Rs. {Math.round(s.total_outstanding || 0).toLocaleString()}</span>
                           ) : (
                             <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold uppercase">
                               <CheckCircle2 className="w-3 h-3" /><span>Cleared</span>

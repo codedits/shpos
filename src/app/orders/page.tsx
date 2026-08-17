@@ -112,19 +112,19 @@ export default function OrdersPage() {
           <div className="bg-white rounded-xl border border-slate-200 accent-card accent-card-blue p-5 shadow-xs">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Sales Booked</p>
             <h3 className="text-2xl font-black text-slate-900 font-mono mt-1">
-              Rs. {totalSalesSum.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              Rs. {Math.round(totalSalesSum).toLocaleString()}
             </h3>
           </div>
           <div className="bg-white rounded-xl border border-slate-200 accent-card accent-card-emerald p-5 shadow-xs">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Cash Received</p>
             <h3 className="text-2xl font-black text-emerald-700 font-mono mt-1">
-              Rs. {totalPaidSum.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              Rs. {Math.round(totalPaidSum).toLocaleString()}
             </h3>
           </div>
           <div className="bg-white rounded-xl border border-slate-200 accent-card accent-card-rose p-5 shadow-xs">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Remaining Unpaid Credit</p>
             <h3 className="text-2xl font-black text-rose-700 font-mono mt-1">
-              Rs. {totalRemainingSum.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              Rs. {Math.round(totalRemainingSum).toLocaleString()}
             </h3>
           </div>
         </div>
@@ -214,13 +214,13 @@ export default function OrdersPage() {
                         })}
                       </td>
                       <td className="p-4 font-bold text-slate-900">
-                        Rs. {o.total_amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        Rs. {Math.round(o.total_amount).toLocaleString()}
                       </td>
                       <td className="p-4 font-bold text-emerald-700">
-                        Rs. {o.amount_paid.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        Rs. {Math.round(o.amount_paid).toLocaleString()}
                       </td>
                       <td className="p-4 font-bold text-rose-700">
-                        Rs. {o.remaining_amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        Rs. {Math.round(o.remaining_amount).toLocaleString()}
                       </td>
                       <td className="p-4 text-center">
                         <span
