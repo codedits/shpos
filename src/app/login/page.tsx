@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import {
@@ -68,18 +69,25 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen w-full relative overflow-hidden select-none font-sans bg-slate-900">
-      {/* Layer 1: Main Login Page (Wallpaper + Solid White 3D Card) */}
-      <div 
-        className="min-h-screen w-full flex items-center justify-center p-4 bg-cover bg-center"
-        style={{ backgroundImage: "url('/login_bg.jpg')" }}
-      >
-        {/* Subtle backdrop overlay */}
-        <div className="absolute inset-0 bg-black/5 pointer-events-none" />
+      {/* Layer 1: Next.js Optimized Full-Screen Background Image */}
+      <Image
+        src="/login_bg.jpg"
+        alt="VEYRO Background Wallpaper"
+        fill
+        priority
+        sizes="100vw"
+        quality={80}
+        className="object-cover object-center pointer-events-none"
+      />
 
-        {/* Solid white macOS Migration Assistant style Login Card Container */}
-        <div 
+      {/* Subtle backdrop overlay */}
+      <div className="absolute inset-0 bg-black/5 pointer-events-none z-0" />
+
+      {/* Main Container with Solid White macOS Style 3D Card */}
+      <div className="min-h-screen w-full flex items-center justify-center p-4 relative z-10">
+        <div
           className="w-full max-w-md bg-white border border-slate-200/90 rounded-3xl p-8 space-y-6 relative z-10"
-          style={{ 
+          style={{
             boxShadow: '0 30px 70px -15px rgba(15, 23, 42, 0.3), inset 0 1px 0 0 rgba(255, 255, 255, 0.9)'
           }}
         >
@@ -183,10 +191,9 @@ export default function LoginPage() {
 
       {/* Layer 2: Minimal White Loading Screen with No Extra Info & No Letter Spacing */}
       {showIntro && (
-        <div 
-          className={`fixed inset-0 z-50 bg-white text-slate-900 flex flex-col items-center justify-center p-4 font-sans transition-all duration-1000 ease-in-out ${
-            isFading ? 'opacity-0 pointer-events-none scale-105' : 'opacity-100 scale-100'
-          }`}
+        <div
+          className={`fixed inset-0 z-50 bg-white text-slate-900 flex flex-col items-center justify-center p-4 font-sans transition-all duration-1000 ease-in-out ${isFading ? 'opacity-0 pointer-events-none scale-105' : 'opacity-100 scale-100'
+            }`}
         >
           <div className="flex flex-col items-center space-y-4 text-center">
             <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 font-heading uppercase">
