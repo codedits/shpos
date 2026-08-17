@@ -12,20 +12,9 @@ interface AppLayoutProps {
 export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
 
-  // Prevent ANY dashboard or layout flashing while unauthenticated or checking session
+  // If loading or not authenticated, render nothing while redirecting to /login (no double loading screen)
   if (loading || !isAuthenticated) {
-    return (
-      <div className="min-h-screen w-full bg-white flex flex-col items-center justify-center p-4 font-sans select-none text-slate-900">
-        <div className="flex flex-col items-center space-y-4 animate-scale-in text-center">
-          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-[0.25em] text-slate-900 font-heading uppercase pl-[0.25em]">
-            VEYRO
-          </h1>
-          <div className="w-32 h-[2px] bg-slate-100 rounded-full overflow-hidden mt-1">
-            <div className="h-full bg-slate-900 rounded-full animate-progress" />
-          </div>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   return (

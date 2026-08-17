@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Image from 'next/image';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -18,43 +18,11 @@ export default function LoginPage() {
   const { login } = useAuth();
   const toast = useToast();
 
-  // Intro states: showIntro keeps overlay mounted, isFading controls opacity dissolve
-  const [showIntro, setShowIntro] = useState(true);
-  const [isFading, setIsFading] = useState(false);
-
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  // Dynamic Image & Asset Preloader — Waits for login background image to fully load before dissolving intro screen
-  useEffect(() => {
-    let isMounted = true;
-
-    const bgImg = new window.Image();
-    bgImg.src = '/login_bg.jpg';
-
-    const triggerReveal = () => {
-      if (!isMounted) return;
-      setIsFading(true);
-      setTimeout(() => {
-        if (isMounted) setShowIntro(false);
-      }, 1000);
-    };
-
-    if (bgImg.complete) {
-      // Minimum display time for smooth visual flow
-      setTimeout(triggerReveal, 800);
-    } else {
-      bgImg.onload = () => setTimeout(triggerReveal, 500);
-      bgImg.onerror = () => triggerReveal();
-    }
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,12 +44,12 @@ export default function LoginPage() {
         toast.error('Authentication Failed', 'Invalid username or password.');
       }
       setSubmitting(false);
-    }, 300);
+    }, 200);
   };
 
   return (
-    <div className="min-h-screen w-full relative overflow-hidden select-none font-sans bg-slate-900">
-      {/* Layer 1: Next.js Optimized Full-Screen Background Image */}
+    <div className="min-h-screen w-full relative overflow-hidden select-none font-sans bg-slate-900 animate-fade-in">
+      {/* Optimized High-Speed Full-Screen Background Image */}
       <Image
         src="/login_bg.jpg"
         alt="VEYRO Background Wallpaper"
@@ -98,7 +66,7 @@ export default function LoginPage() {
       {/* Main Container with Solid White macOS Style 3D Card */}
       <div className="min-h-screen w-full flex items-center justify-center p-4 relative z-10">
         <div
-          className="w-full max-w-md bg-white border border-slate-200/90 rounded-3xl p-8 space-y-6 relative z-10"
+          className="w-full max-w-md bg-white border border-slate-200/90 rounded-3xl p-8 space-y-6 relative z-10 animate-scale-in"
           style={{
             boxShadow: '0 30px 70px -15px rgba(15, 23, 42, 0.3), inset 0 1px 0 0 rgba(255, 255, 255, 0.9)'
           }}
@@ -200,24 +168,6 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
-
-      {/* Layer 2: Spaced Typography Classical Loading Screen (Dynamic Preloader) */}
-      {showIntro && (
-        <div
-          className={`fixed inset-0 z-50 bg-white text-slate-900 flex flex-col items-center justify-center p-4 font-sans transition-all duration-1000 ease-in-out ${
-            isFading ? 'opacity-0 pointer-events-none scale-105' : 'opacity-100 scale-100'
-          }`}
-        >
-          <div className="flex flex-col items-center space-y-4 text-center">
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-[0.25em] text-slate-900 font-heading uppercase pl-[0.25em]">
-              VEYRO
-            </h1>
-            <div className="w-32 h-[2px] bg-slate-100 rounded-full overflow-hidden mt-1">
-              <div className="h-full bg-slate-900 rounded-full animate-progress" />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
