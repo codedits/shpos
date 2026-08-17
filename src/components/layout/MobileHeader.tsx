@@ -16,6 +16,8 @@ import {
   Menu,
   X,
   Database,
+  Truck,
+  ClipboardList,
 } from 'lucide-react';
 import { wholesaleService } from '@/services/wholesaleService';
 import { BusinessSettings } from '@/types/wholesale';
@@ -24,6 +26,8 @@ const NAV_ITEMS = [
   { label: 'Dashboard', href: '/', icon: LayoutDashboard },
   { label: 'Orders', href: '/orders', icon: ShoppingCart },
   { label: 'Products', href: '/products', icon: Package },
+  { label: 'Suppliers', href: '/suppliers', icon: Truck },
+  { label: 'Purchases', href: '/purchases', icon: ClipboardList },
   { label: 'Customers', href: '/customers', icon: Users },
   { label: 'Payments', href: '/payments', icon: CreditCard },
   { label: 'Invoices', href: '/invoices', icon: FileText },

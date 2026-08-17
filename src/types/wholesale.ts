@@ -207,3 +207,111 @@ export interface RecordPaymentInput {
   payment_date?: string;
   idempotency_key?: string;
 }
+
+// ==============================================================================
+// SUPPLIER & PURCHASE TYPES
+// ==============================================================================
+
+export interface Supplier {
+  id: string;
+  name: string;
+  phone?: string | null;
+  address?: string | null;
+  notes?: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  // Derived from supplier_balances_view
+  total_purchased?: number;
+  total_paid?: number;
+  total_outstanding?: number;
+  total_purchases_count?: number;
+}
+
+export interface PurchaseItem {
+  id: string;
+  purchase_id: string;
+  product_id: string;
+  variant_id?: string | null;
+  product_name_snapshot: string;
+  color_snapshot?: string | null;
+  size_snapshot?: string | null;
+  quantity: number;
+  cost_per_unit: number;
+  line_total: number;
+  created_at: string;
+}
+
+export interface Purchase {
+  id: string;
+  purchase_number: string;
+  supplier_id?: string | null;
+  supplier?: Supplier | null;
+  purchase_date: string;
+  total_cost: number;
+  amount_paid: number;
+  remaining_amount: number;
+  payment_status: PaymentStatus;
+  notes?: string | null;
+  idempotency_key?: string | null;
+  is_voided: boolean;
+  voided_at?: string | null;
+  void_reason?: string | null;
+  created_at: string;
+  updated_at: string;
+  items?: PurchaseItem[];
+}
+
+export interface SupplierPaymentAllocation {
+  id: string;
+  supplier_payment_id: string;
+  purchase_id: string;
+  purchase_number?: string;
+  amount_allocated: number;
+  created_at: string;
+}
+
+export interface SupplierPayment {
+  id: string;
+  supplier_id: string;
+  supplier_name?: string;
+  amount: number;
+  payment_date: string;
+  payment_method: PaymentMethod;
+  note?: string | null;
+  idempotency_key?: string | null;
+  is_voided?: boolean;
+  voided_at?: string | null;
+  void_reason?: string | null;
+  allocations?: SupplierPaymentAllocation[];
+  created_at: string;
+}
+
+export interface CreatePurchaseItemInput {
+  product_id: string;
+  variant_id?: string | null;
+  quantity: number;
+  cost_per_unit: number;
+  color_snapshot?: string;
+  size_snapshot?: string;
+}
+
+export interface CreatePurchaseInput {
+  supplier_id?: string | null;
+  items: CreatePurchaseItemInput[];
+  amount_paid: number;
+  payment_method: PaymentMethod;
+  notes?: string;
+  purchase_date?: string;
+  idempotency_key?: string;
+}
+
+export interface RecordSupplierPaymentInput {
+  supplier_id: string;
+  amount: number;
+  payment_method: PaymentMethod;
+  purchase_id?: string;
+  note?: string;
+  payment_date?: string;
+  idempotency_key?: string;
+}

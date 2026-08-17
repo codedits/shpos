@@ -297,6 +297,182 @@ async function runTestSuite() {
     const { data: ordCheck4 } = await supabase.from('orders').select('is_voided, remaining_amount').eq('id', testOrderId).single();
     assert(ordCheck4?.is_voided === true && ordCheck4?.remaining_amount === 0, 'Order Marked is_voided=TRUE with 0.00 Remaining');
 
+    // -------------------------------------------------------------
+    // TEST 7: Supplier Account & Initial Ledger State
+    // -------------------------------------------------------------
+    console.log('\n\x1b[36m[TEST SUITE 7/11] Supplier & Initial Ledger Checks\x1b[0m');
+    let testSupplierId: string | null = null;
+    let testPurchaseId: string | null = null;
+    let testSupplierPaymentId: string | null = null;
+
+    const { data: suppData, error: suppErr } = await supabase
+      .from('suppliers')
+      .insert([
+        {
+          name: 'Textile Mills Faisalabad Test ' + Date.now(),
+          phone: '0321-9988776',
+          address: 'Millat Road, Faisalabad',
+        },
+      ])
+      .select()
+      .single();
+
+    assert(!suppErr && !!suppData, 'Create Supplier Profile', `ID: ${suppData?.id}`);
+    testSupplierId = suppData?.id;
+
+    // Check initial balance from supplier_balances_view
+    const { data: suppBal0 } = await supabase
+      .from('supplier_balances_view')
+      .select('*')
+      .eq('id', testSupplierId)
+      .single();
+
+    assert(
+      (suppBal0?.total_outstanding || 0) === 0 && (suppBal0?.total_purchased || 0) === 0,
+      'Initial Supplier Ledger Balance is 0.00'
+    );
+
+    // -------------------------------------------------------------
+    // TEST 8: Purchase Creation (Atomic Stock Receipt / Inflow)
+    // -------------------------------------------------------------
+    console.log('\n\x1b[36m[TEST SUITE 8/11] Atomic Purchase & Stock Receipt (Inventory Inflow)\x1b[0m');
+    // We add 50 pcs of Black/Medium (@ Rs. 1,000 cost) and 20 pcs of Black/Large (@ Rs. 1,100 cost)
+    // Total cost = 50 * 1000 + 20 * 1100 = 50,000 + 22,000 = 72,000
+    // Advance paid = Rs. 20,000 -> Remaining payable = Rs. 52,000
+    const { data: purRpcRes, error: purRpcErr } = await supabase.rpc('create_purchase', {
+      p_supplier_id: testSupplierId,
+      p_items: [
+        {
+          product_id: testProductId,
+          variant_id: variantBMId,
+          quantity: 50,
+          cost_per_unit: 1000,
+          color_snapshot: 'Black',
+          size_snapshot: 'Medium',
+        },
+        {
+          product_id: testProductId,
+          variant_id: variantBLId,
+          quantity: 20,
+          cost_per_unit: 1100,
+          color_snapshot: 'Black',
+          size_snapshot: 'Large',
+        },
+      ],
+      p_amount_paid: 20000,
+      p_payment_method: 'Bank',
+      p_notes: 'Automated test purchase batch #1',
+    });
+
+    assert(!purRpcErr && !!purRpcRes?.purchase_id, 'Execute create_purchase Stored Procedure', `PUR ID: ${purRpcRes?.purchase_id}`);
+    testPurchaseId = purRpcRes?.purchase_id;
+
+    assert(
+      parseFloat(purRpcRes?.total_cost) === 72000 &&
+      parseFloat(purRpcRes?.amount_paid) === 20000 &&
+      parseFloat(purRpcRes?.remaining_amount) === 52000 &&
+      purRpcRes?.payment_status === 'PARTIALLY_PAID',
+      'Purchase Calculation & Partial Status (72k total, 20k paid, 52k due)'
+    );
+
+    // Verify stock INCREMENT on product variants (was 35 BM -> now 85, was 10 BL -> now 30)
+    const { data: vBM_afterPur } = await supabase.from('product_variants').select('stock_quantity').eq('id', variantBMId).single();
+    const { data: vBL_afterPur } = await supabase.from('product_variants').select('stock_quantity').eq('id', variantBLId).single();
+    const { data: p_afterPur } = await supabase.from('products').select('stock_quantity').eq('id', testProductId).single();
+
+    assert(vBM_afterPur?.stock_quantity === 85, 'Variant Black/Medium Stock Incremented from 35 to 85 pcs (+50)');
+    assert(vBL_afterPur?.stock_quantity === 30, 'Variant Black/Large Stock Incremented from 10 to 30 pcs (+20)');
+    assert(p_afterPur?.stock_quantity === 130, 'Product Aggregate Stock Incremented from 60 to 130 pcs (+70)');
+
+    // Verify Supplier Ledger after Purchase + Advance Payment
+    const { data: suppBal1 } = await supabase
+      .from('supplier_balances_view')
+      .select('*')
+      .eq('id', testSupplierId)
+      .single();
+
+    assert(
+      parseFloat(suppBal1?.total_purchased) === 72000 &&
+      parseFloat(suppBal1?.total_paid) === 20000 &&
+      parseFloat(suppBal1?.total_outstanding) === 52000 &&
+      parseInt(suppBal1?.total_purchases_count) === 1,
+      'Supplier Ledger Accurately Reflects Purchase & Advance Payment (52,000 Outstanding)'
+    );
+
+    // -------------------------------------------------------------
+    // TEST 9: Supplier Installment Payment & FIFO Allocation
+    // -------------------------------------------------------------
+    console.log('\n\x1b[36m[TEST SUITE 9/11] Supplier Payment & FIFO Settlement\x1b[0m');
+    // Pay Rs. 30,000 towards the supplier
+    const { data: suppPayRes, error: suppPayErr } = await supabase.rpc('record_supplier_payment', {
+      p_supplier_id: testSupplierId,
+      p_amount: 30000,
+      p_payment_method: 'Cash',
+      p_note: 'Second installment for purchase',
+    });
+
+    assert(!suppPayErr && !!suppPayRes?.payment_id, 'Execute record_supplier_payment Stored Procedure', `Pay ID: ${suppPayRes?.payment_id}`);
+    testSupplierPaymentId = suppPayRes?.payment_id;
+
+    // Check Purchase status now (72k total, 50k paid, 22k remaining)
+    const { data: purAfterPay } = await supabase.from('purchases').select('*').eq('id', testPurchaseId).single();
+    assert(
+      parseFloat(purAfterPay?.amount_paid) === 50000 &&
+      parseFloat(purAfterPay?.remaining_amount) === 22000 &&
+      purAfterPay?.payment_status === 'PARTIALLY_PAID',
+      'Purchase Status Updated via FIFO Allocation (50k paid, 22k remaining)'
+    );
+
+    // Check Supplier Ledger
+    const { data: suppBal2 } = await supabase.from('supplier_balances_view').select('*').eq('id', testSupplierId).single();
+    assert(
+      parseFloat(suppBal2?.total_paid) === 50000 &&
+      parseFloat(suppBal2?.total_outstanding) === 22000,
+      'Supplier Ledger Updated (50,000 Paid, 22,000 Outstanding)'
+    );
+
+    // -------------------------------------------------------------
+    // TEST 10: Supplier Payment Voiding (Balance Reopening)
+    // -------------------------------------------------------------
+    console.log('\n\x1b[36m[TEST SUITE 10/11] Supplier Payment Voiding & Allocation Reversal\x1b[0m');
+    const { data: voidSuppPayRes, error: voidSuppPayErr } = await supabase.rpc('void_supplier_payment', {
+      p_payment_id: testSupplierPaymentId,
+      p_void_reason: 'Voided in test suite',
+    });
+
+    assert(!voidSuppPayErr && voidSuppPayRes?.voided === true, 'Execute void_supplier_payment Stored Procedure');
+
+    // Verify purchase reverted back to 20k paid, 52k remaining
+    const { data: purAfterVoidPay } = await supabase.from('purchases').select('*').eq('id', testPurchaseId).single();
+    assert(
+      parseFloat(purAfterVoidPay?.amount_paid) === 20000 &&
+      parseFloat(purAfterVoidPay?.remaining_amount) === 52000,
+      'Purchase Balance Restored to 52,000 after Voiding Payment'
+    );
+
+    // -------------------------------------------------------------
+    // TEST 11: Purchase Voiding (Stock & Financial Reversal)
+    // -------------------------------------------------------------
+    console.log('\n\x1b[36m[TEST SUITE 11/11] Purchase Voiding & Stock Subtraction Reversal\x1b[0m');
+    const { data: voidPurRes, error: voidPurErr } = await supabase.rpc('void_purchase', {
+      p_purchase_id: testPurchaseId,
+      p_void_reason: 'Voided in test suite',
+    });
+
+    assert(!voidPurErr && voidPurRes?.voided === true, 'Execute void_purchase Stored Procedure');
+
+    // Verify stock has been subtracted back to baseline (was 85 BM -> now 35, was 30 BL -> now 10)
+    const { data: vBM_final } = await supabase.from('product_variants').select('stock_quantity').eq('id', variantBMId).single();
+    const { data: vBL_final } = await supabase.from('product_variants').select('stock_quantity').eq('id', variantBLId).single();
+    const { data: p_final } = await supabase.from('products').select('stock_quantity').eq('id', testProductId).single();
+
+    assert(vBM_final?.stock_quantity === 35, 'Variant Black/Medium Stock Reversed Back to 35 pcs (-50)');
+    assert(vBL_final?.stock_quantity === 10, 'Variant Black/Large Stock Reversed Back to 10 pcs (-20)');
+    assert(p_final?.stock_quantity === 60, 'Product Aggregate Stock Reversed Back to 60 pcs (-70)');
+
+    const { data: purFinal } = await supabase.from('purchases').select('is_voided, remaining_amount').eq('id', testPurchaseId).single();
+    assert(purFinal?.is_voided === true && purFinal?.remaining_amount === 0, 'Purchase Marked is_voided=TRUE with 0.00 Remaining');
+
   } catch (err: any) {
     console.error('\n\x1b[31mUNHANDLED EXCEPTION IN TEST SUITE:\x1b[0m', err.message);
     results.push({ name: 'Suite Execution', passed: false, error: err });
@@ -305,6 +481,14 @@ async function runTestSuite() {
     // TEARDOWN / CLEANUP
     // -------------------------------------------------------------
     console.log('\n\x1b[33mCleaning up test database records...\x1b[0m');
+    // Supplier records cleanup
+    await supabase.from('supplier_payment_allocations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('supplier_payments').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('purchase_items').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('purchases').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('suppliers').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+
+    // Customer / Product cleanup
     if (testOrderId) {
       await supabase.from('payment_allocations').delete().eq('order_id', testOrderId);
       await supabase.from('order_items').delete().eq('order_id', testOrderId);

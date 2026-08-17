@@ -282,3 +282,142 @@ BEGIN
   END IF;
 END $$;
 
+-- ==============================================================================
+-- SUPPLIER SECTION: TABLES, INDEXES, RLS, VIEWS, RPCS
+-- ==============================================================================
+
+CREATE SEQUENCE IF NOT EXISTS purchase_number_seq START 1;
+
+-- 1. SUPPLIERS TABLE
+CREATE TABLE IF NOT EXISTS public.suppliers (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  phone TEXT,
+  address TEXT,
+  notes TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 2. PURCHASES TABLE (Stock Receipts)
+CREATE TABLE IF NOT EXISTS public.purchases (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  purchase_number TEXT UNIQUE NOT NULL,
+  supplier_id UUID REFERENCES public.suppliers(id) ON DELETE RESTRICT,
+  purchase_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  total_cost NUMERIC(12, 2) NOT NULL CHECK (total_cost >= 0),
+  amount_paid NUMERIC(12, 2) NOT NULL DEFAULT 0.00 CHECK (amount_paid >= 0),
+  remaining_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00 CHECK (remaining_amount >= 0),
+  payment_status TEXT NOT NULL CHECK (payment_status IN ('PAID', 'PARTIALLY_PAID', 'UNPAID')),
+  notes TEXT,
+  idempotency_key TEXT UNIQUE,
+  is_voided BOOLEAN NOT NULL DEFAULT FALSE,
+  voided_at TIMESTAMPTZ,
+  void_reason TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 3. PURCHASE ITEMS TABLE
+CREATE TABLE IF NOT EXISTS public.purchase_items (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  purchase_id UUID NOT NULL REFERENCES public.purchases(id) ON DELETE CASCADE,
+  product_id UUID NOT NULL REFERENCES public.products(id) ON DELETE RESTRICT,
+  variant_id UUID REFERENCES public.product_variants(id) ON DELETE RESTRICT,
+  product_name_snapshot TEXT NOT NULL,
+  color_snapshot TEXT,
+  size_snapshot TEXT,
+  quantity INT NOT NULL CHECK (quantity > 0),
+  cost_per_unit NUMERIC(12, 2) NOT NULL CHECK (cost_per_unit >= 0),
+  line_total NUMERIC(12, 2) NOT NULL CHECK (line_total >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 4. SUPPLIER PAYMENTS TABLE
+CREATE TABLE IF NOT EXISTS public.supplier_payments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  supplier_id UUID NOT NULL REFERENCES public.suppliers(id) ON DELETE RESTRICT,
+  amount NUMERIC(12, 2) NOT NULL CHECK (amount > 0),
+  payment_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  payment_method TEXT NOT NULL DEFAULT 'Cash' CHECK (payment_method IN ('Cash', 'Bank', 'Other')),
+  note TEXT,
+  idempotency_key TEXT UNIQUE,
+  is_voided BOOLEAN NOT NULL DEFAULT FALSE,
+  voided_at TIMESTAMPTZ,
+  void_reason TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 5. SUPPLIER PAYMENT ALLOCATIONS TABLE
+CREATE TABLE IF NOT EXISTS public.supplier_payment_allocations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  supplier_payment_id UUID NOT NULL REFERENCES public.supplier_payments(id) ON DELETE CASCADE,
+  purchase_id UUID NOT NULL REFERENCES public.purchases(id) ON DELETE RESTRICT,
+  amount_allocated NUMERIC(12, 2) NOT NULL CHECK (amount_allocated > 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- INDEXES
+CREATE INDEX IF NOT EXISTS idx_purchases_supplier_id ON public.purchases(supplier_id);
+CREATE INDEX IF NOT EXISTS idx_purchases_purchase_date ON public.purchases(purchase_date);
+CREATE INDEX IF NOT EXISTS idx_purchases_idempotency_key ON public.purchases(idempotency_key);
+CREATE INDEX IF NOT EXISTS idx_purchase_items_purchase_id ON public.purchase_items(purchase_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_items_product_id ON public.purchase_items(product_id);
+CREATE INDEX IF NOT EXISTS idx_supplier_payments_supplier_id ON public.supplier_payments(supplier_id);
+CREATE INDEX IF NOT EXISTS idx_supplier_payments_payment_date ON public.supplier_payments(payment_date);
+CREATE INDEX IF NOT EXISTS idx_supplier_payment_allocations_payment_id ON public.supplier_payment_allocations(supplier_payment_id);
+CREATE INDEX IF NOT EXISTS idx_supplier_payment_allocations_purchase_id ON public.supplier_payment_allocations(purchase_id);
+
+-- RLS
+ALTER TABLE public.suppliers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.purchases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.purchase_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.supplier_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.supplier_payment_allocations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public access to suppliers" ON public.suppliers FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public access to purchases" ON public.purchases FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public access to purchase_items" ON public.purchase_items FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public access to supplier_payments" ON public.supplier_payments FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public access to supplier_payment_allocations" ON public.supplier_payment_allocations FOR ALL TO public USING (true) WITH CHECK (true);
+
+-- SUPPLIER BALANCES VIEW
+CREATE OR REPLACE VIEW public.supplier_balances_view WITH (security_invoker = true) AS
+WITH supplier_purchases AS (
+  SELECT
+    supplier_id,
+    COALESCE(SUM(total_cost), 0.00) AS total_purchased,
+    COALESCE(SUM(amount_paid), 0.00) AS total_purchase_paid,
+    COALESCE(SUM(remaining_amount), 0.00) AS total_outstanding,
+    COUNT(id) AS total_purchases_count
+  FROM public.purchases
+  WHERE is_voided = FALSE AND supplier_id IS NOT NULL
+  GROUP BY supplier_id
+),
+supplier_pays AS (
+  SELECT
+    supplier_id,
+    COALESCE(SUM(amount), 0.00) AS total_paid
+  FROM public.supplier_payments
+  WHERE is_voided = FALSE
+  GROUP BY supplier_id
+)
+SELECT
+  s.id,
+  s.id AS supplier_id,
+  s.name,
+  s.phone,
+  s.address,
+  s.notes,
+  s.is_active,
+  s.created_at,
+  s.updated_at,
+  COALESCE(sp.total_purchased, 0.00) AS total_purchased,
+  COALESCE(spay.total_paid, 0.00) AS total_paid,
+  COALESCE(sp.total_outstanding, 0.00) AS total_outstanding,
+  COALESCE(sp.total_purchases_count, 0::BIGINT) AS total_purchases_count
+FROM public.suppliers s
+LEFT JOIN supplier_purchases sp ON sp.supplier_id = s.id
+LEFT JOIN supplier_pays spay ON spay.supplier_id = s.id;
+

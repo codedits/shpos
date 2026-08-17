@@ -20,6 +20,9 @@ export const CacheKeys = {
   ORDERS: 'cache_wholesale_orders',
   PAYMENTS: 'cache_wholesale_payments',
   SETTINGS: 'cache_wholesale_settings',
+  SUPPLIERS: 'cache_wholesale_suppliers',
+  PURCHASES: 'cache_wholesale_purchases',
+  SUPPLIER_PAYMENTS: 'cache_wholesale_supplier_payments',
 } as const;
 
 export const CACHE_TTL = {
@@ -28,6 +31,9 @@ export const CACHE_TTL = {
   ORDERS: 30 * 1000, // 30s
   PAYMENTS: 30 * 1000, // 30s
   SETTINGS: 10 * 60 * 1000, // 10 mins
+  SUPPLIERS: 2 * 60 * 1000, // 2 mins
+  PURCHASES: 30 * 1000, // 30s
+  SUPPLIER_PAYMENTS: 30 * 1000, // 30s
 };
 
 export class CacheManager {

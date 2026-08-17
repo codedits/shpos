@@ -16,6 +16,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Database,
+  Truck,
+  ClipboardList,
 } from 'lucide-react';
 import { wholesaleService } from '@/services/wholesaleService';
 import { BusinessSettings } from '@/types/wholesale';
@@ -32,6 +34,13 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Dashboard', href: '/', icon: LayoutDashboard },
       { label: 'Orders', href: '/orders', icon: ShoppingCart },
       { label: 'Products', href: '/products', icon: Package },
+    ],
+  },
+  {
+    title: 'Supply Chain',
+    items: [
+      { label: 'Suppliers', href: '/suppliers', icon: Truck },
+      { label: 'Purchases', href: '/purchases', icon: ClipboardList },
     ],
   },
   {

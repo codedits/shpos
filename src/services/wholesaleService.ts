@@ -15,6 +15,12 @@ import {
   AuditLog,
   RegisterSession,
   RegisterCashMovement,
+  Supplier,
+  Purchase,
+  PurchaseItem,
+  SupplierPayment,
+  CreatePurchaseInput,
+  RecordSupplierPaymentInput,
 } from '@/types/wholesale';
 
 // Browser Local Storage Keys (Resilient Offline Fallback Layer)
@@ -280,6 +286,7 @@ export const wholesaleService = {
       // 2. Insert variant records
       if (initialVariants.length > 0) {
         const variantInserts = initialVariants.map((v) => ({
+          id: generateUUID(),
           product_id: newProduct.id,
           color: v.color.trim(),
           size: v.size,
@@ -291,7 +298,8 @@ export const wholesaleService = {
           .insert(variantInserts)
           .select();
 
-        if (!vErr && vData) {
+        if (vErr) throw new Error(`Failed to save product variants: ${vErr.message}`);
+        if (vData) {
           newProduct.variants = vData;
         }
       }
@@ -380,7 +388,7 @@ export const wholesaleService = {
         }
 
         const upsertRows = variantsInput.map((v) => ({
-          ...(v.id ? { id: v.id } : {}),
+          id: v.id || generateUUID(),
           product_id: id,
           color: v.color.trim(),
           size: v.size,
@@ -393,7 +401,8 @@ export const wholesaleService = {
           .upsert(upsertRows, { onConflict: 'product_id, color, size' })
           .select();
 
-        if (!upErr && upData) {
+        if (upErr) throw new Error(`Failed to update variants: ${upErr.message}`);
+        if (upData) {
           updated.variants = upData;
         }
       }
@@ -1509,8 +1518,387 @@ export const wholesaleService = {
     return updated;
   },
 
+  // ==========================================
+  // SUPPLIERS & PAYABLE LEDGER
+  // ==========================================
+  async getSuppliers(forceRefresh = false): Promise<Supplier[]> {
+    return CacheManager.fetchWithCache<Supplier[]>(
+      CacheKeys.SUPPLIERS,
+      async () => {
+        if (supabase) {
+          const { data, error } = await supabase
+            .from('supplier_balances_view')
+            .select('*')
+            .order('name', { ascending: true });
+
+          if (!error && data) {
+            return data.map((s: any) => ({
+              id: s.supplier_id || s.id,
+              name: s.name,
+              phone: s.phone,
+              address: s.address,
+              notes: s.notes,
+              is_active: s.is_active ?? true,
+              created_at: s.created_at,
+              updated_at: s.updated_at,
+              total_purchased: parseFloat(s.total_purchased) || 0,
+              total_paid: parseFloat(s.total_paid) || 0,
+              total_outstanding: parseFloat(s.total_outstanding) || 0,
+              total_purchases_count: parseInt(s.total_purchases_count) || 0,
+            }));
+          }
+        }
+        return [];
+      },
+      {
+        ttlMs: CACHE_TTL.SUPPLIERS,
+        fallback: [],
+        forceRefresh,
+      }
+    );
+  },
+
+  async getSupplierById(id: string): Promise<Supplier | null> {
+    const suppliers = await this.getSuppliers();
+    return suppliers.find((s) => s.id === id) || null;
+  },
+
+  async createSupplier(input: Omit<Supplier, 'id' | 'created_at' | 'updated_at' | 'is_active'>): Promise<Supplier> {
+    const id = generateUUID();
+    const newSupplier: Supplier = {
+      ...input,
+      id,
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      total_outstanding: 0,
+      total_purchases_count: 0,
+    };
+
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('suppliers')
+        .insert([{
+          id: newSupplier.id,
+          name: newSupplier.name,
+          phone: newSupplier.phone || null,
+          address: newSupplier.address || null,
+          notes: newSupplier.notes || null,
+        }])
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      if (data) {
+        newSupplier.created_at = data.created_at;
+        newSupplier.updated_at = data.updated_at;
+      }
+    }
+
+    CacheManager.invalidate([CacheKeys.SUPPLIERS]);
+    return newSupplier;
+  },
+
+  async updateSupplier(id: string, input: Partial<Omit<Supplier, 'id' | 'created_at' | 'updated_at'>>): Promise<Supplier> {
+    const existing = await this.getSupplierById(id);
+    if (!existing) throw new Error('Supplier not found.');
+
+    const updated: Supplier = {
+      ...existing,
+      ...input,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (supabase) {
+      const { error } = await supabase
+        .from('suppliers')
+        .update({
+          name: updated.name,
+          phone: updated.phone,
+          address: updated.address,
+          notes: updated.notes,
+          updated_at: updated.updated_at,
+        })
+        .eq('id', id);
+
+      if (error) throw new Error(error.message);
+    }
+
+    CacheManager.invalidate([CacheKeys.SUPPLIERS]);
+    return updated;
+  },
+
+  async deleteSupplier(id: string): Promise<void> {
+    if (supabase) {
+      // Cascade delete supplier payment allocations, payments, purchase items, purchases
+      const { data: supplierPurchases } = await supabase.from('purchases').select('id').eq('supplier_id', id);
+      const purchaseIds = (supplierPurchases || []).map((p) => p.id);
+
+      if (purchaseIds.length > 0) {
+        await supabase.from('supplier_payment_allocations').delete().in('purchase_id', purchaseIds);
+        await supabase.from('purchase_items').delete().in('purchase_id', purchaseIds);
+        await supabase.from('purchases').delete().eq('supplier_id', id);
+      }
+      await supabase.from('supplier_payments').delete().eq('supplier_id', id);
+
+      const { error } = await supabase.from('suppliers').delete().eq('id', id);
+      if (error) throw new Error(error.message);
+    }
+
+    CacheManager.invalidate([CacheKeys.SUPPLIERS, CacheKeys.PURCHASES, CacheKeys.SUPPLIER_PAYMENTS, CacheKeys.PRODUCTS]);
+  },
+
+  // ==========================================
+  // PURCHASES (STOCK RECEIPTS)
+  // ==========================================
+  async getPurchases(forceRefresh = false): Promise<Purchase[]> {
+    return CacheManager.fetchWithCache<Purchase[]>(
+      CacheKeys.PURCHASES,
+      async () => {
+        if (supabase) {
+          const { data, error } = await supabase
+            .from('purchases')
+            .select(`
+              *,
+              supplier:suppliers(*),
+              items:purchase_items(*)
+            `)
+            .order('purchase_date', { ascending: false });
+
+          if (!error && data) {
+            return data.map((p: any) => ({
+              id: p.id,
+              purchase_number: p.purchase_number,
+              supplier_id: p.supplier_id,
+              supplier: p.supplier || null,
+              purchase_date: p.purchase_date,
+              total_cost: parseFloat(p.total_cost) || 0,
+              amount_paid: parseFloat(p.amount_paid) || 0,
+              remaining_amount: parseFloat(p.remaining_amount) || 0,
+              payment_status: p.payment_status,
+              notes: p.notes,
+              idempotency_key: p.idempotency_key,
+              is_voided: p.is_voided ?? false,
+              voided_at: p.voided_at,
+              void_reason: p.void_reason,
+              created_at: p.created_at,
+              updated_at: p.updated_at,
+              items: (p.items || []).map((it: any) => ({
+                id: it.id,
+                purchase_id: it.purchase_id,
+                product_id: it.product_id,
+                variant_id: it.variant_id,
+                product_name_snapshot: it.product_name_snapshot,
+                color_snapshot: it.color_snapshot,
+                size_snapshot: it.size_snapshot,
+                quantity: it.quantity,
+                cost_per_unit: parseFloat(it.cost_per_unit) || 0,
+                line_total: parseFloat(it.line_total) || 0,
+                created_at: it.created_at,
+              })),
+            }));
+          }
+        }
+        return [];
+      },
+      {
+        ttlMs: CACHE_TTL.PURCHASES,
+        fallback: [],
+        forceRefresh,
+      }
+    );
+  },
+
+  async getPurchaseById(id: string): Promise<Purchase | null> {
+    const purchases = await this.getPurchases();
+    return purchases.find((p) => p.id === id) || null;
+  },
+
+  async createPurchase(input: CreatePurchaseInput): Promise<Purchase> {
+    const idempotencyKey = input.idempotency_key || generateUUID();
+
+    if (supabase) {
+      const { data, error } = await supabase.rpc('create_purchase', {
+        p_supplier_id: input.supplier_id || null,
+        p_items: input.items.map((it) => ({
+          product_id: it.product_id,
+          variant_id: it.variant_id || null,
+          quantity: it.quantity,
+          cost_per_unit: it.cost_per_unit,
+          color_snapshot: it.color_snapshot || null,
+          size_snapshot: it.size_snapshot || null,
+        })),
+        p_amount_paid: input.amount_paid,
+        p_payment_method: input.payment_method || 'Cash',
+        p_notes: input.notes || null,
+        p_purchase_date: input.purchase_date || new Date().toISOString(),
+        p_idempotency_key: idempotencyKey,
+      });
+
+      if (error) throw new Error(error.message);
+
+      if (data && data.purchase_id) {
+        CacheManager.invalidate([CacheKeys.PURCHASES, CacheKeys.PRODUCTS, CacheKeys.SUPPLIERS, CacheKeys.SUPPLIER_PAYMENTS]);
+        const fullPurchase = await this.getPurchaseById(data.purchase_id);
+        if (fullPurchase) return fullPurchase;
+      }
+    }
+
+    throw new Error('Failed to create purchase. Database connection required.');
+  },
+
+  async voidPurchase(purchaseId: string, reason?: string): Promise<void> {
+    if (supabase) {
+      const { error } = await supabase.rpc('void_purchase', {
+        p_purchase_id: purchaseId,
+        p_void_reason: reason || 'Voided by admin',
+      });
+      if (error) throw new Error(error.message);
+    }
+    CacheManager.invalidate([CacheKeys.PURCHASES, CacheKeys.PRODUCTS, CacheKeys.SUPPLIERS, CacheKeys.SUPPLIER_PAYMENTS]);
+  },
+
+  // ==========================================
+  // SUPPLIER PAYMENTS
+  // ==========================================
+  async getSupplierPayments(forceRefresh = false): Promise<SupplierPayment[]> {
+    return CacheManager.fetchWithCache<SupplierPayment[]>(
+      CacheKeys.SUPPLIER_PAYMENTS,
+      async () => {
+        if (supabase) {
+          const { data, error } = await supabase
+            .from('supplier_payments')
+            .select(`
+              *,
+              supplier:suppliers(name),
+              allocations:supplier_payment_allocations(
+                *,
+                purchase:purchases(purchase_number)
+              )
+            `)
+            .order('payment_date', { ascending: false });
+
+          if (!error && data) {
+            return data.map((p: any) => ({
+              id: p.id,
+              supplier_id: p.supplier_id,
+              supplier_name: p.supplier?.name,
+              amount: parseFloat(p.amount) || 0,
+              payment_date: p.payment_date,
+              payment_method: p.payment_method,
+              note: p.note,
+              idempotency_key: p.idempotency_key,
+              is_voided: p.is_voided ?? false,
+              voided_at: p.voided_at,
+              void_reason: p.void_reason,
+              allocations: (p.allocations || []).map((a: any) => ({
+                id: a.id,
+                supplier_payment_id: a.supplier_payment_id,
+                purchase_id: a.purchase_id,
+                purchase_number: a.purchase?.purchase_number,
+                amount_allocated: parseFloat(a.amount_allocated) || 0,
+                created_at: a.created_at,
+              })),
+              created_at: p.created_at,
+            }));
+          }
+        }
+        return [];
+      },
+      {
+        ttlMs: CACHE_TTL.SUPPLIER_PAYMENTS,
+        fallback: [],
+        forceRefresh,
+      }
+    );
+  },
+
+  async recordSupplierPayment(input: RecordSupplierPaymentInput): Promise<SupplierPayment> {
+    if (input.amount <= 0) throw new Error('Payment amount must be greater than zero.');
+
+    const idempotencyKey = input.idempotency_key || generateUUID();
+    const paymentDate = input.payment_date || new Date().toISOString();
+
+    if (supabase) {
+      const { data, error } = await supabase.rpc('record_supplier_payment', {
+        p_supplier_id: input.supplier_id,
+        p_amount: input.amount,
+        p_payment_method: input.payment_method || 'Cash',
+        p_note: input.note || null,
+        p_payment_date: paymentDate,
+        p_idempotency_key: idempotencyKey,
+        p_target_purchase_id: input.purchase_id || null,
+      });
+
+      if (error) throw new Error(error.message);
+
+      CacheManager.invalidate([CacheKeys.SUPPLIER_PAYMENTS, CacheKeys.PURCHASES, CacheKeys.SUPPLIERS]);
+
+      if (data && data.payment_id) {
+        const { data: pData } = await supabase
+          .from('supplier_payments')
+          .select(`
+            *,
+            supplier:suppliers(name),
+            allocations:supplier_payment_allocations(
+              *,
+              purchase:purchases(purchase_number)
+            )
+          `)
+          .eq('id', data.payment_id)
+          .single();
+
+        if (pData) {
+          return {
+            id: pData.id,
+            supplier_id: pData.supplier_id,
+            supplier_name: pData.supplier?.name,
+            amount: parseFloat(pData.amount) || 0,
+            payment_date: pData.payment_date,
+            payment_method: pData.payment_method,
+            note: pData.note,
+            idempotency_key: pData.idempotency_key,
+            is_voided: pData.is_voided ?? false,
+            allocations: (pData.allocations || []).map((a: any) => ({
+              id: a.id,
+              supplier_payment_id: a.supplier_payment_id,
+              purchase_id: a.purchase_id,
+              purchase_number: a.purchase?.purchase_number,
+              amount_allocated: parseFloat(a.amount_allocated) || 0,
+              created_at: a.created_at,
+            })),
+            created_at: pData.created_at,
+          };
+        }
+      }
+    }
+
+    throw new Error('Failed to record supplier payment. Database connection required.');
+  },
+
+  async voidSupplierPayment(paymentId: string, reason?: string): Promise<void> {
+    if (supabase) {
+      const { error } = await supabase.rpc('void_supplier_payment', {
+        p_payment_id: paymentId,
+        p_void_reason: reason || 'Voided by admin',
+      });
+      if (error) throw new Error(error.message);
+    }
+    CacheManager.invalidate([CacheKeys.SUPPLIER_PAYMENTS, CacheKeys.PURCHASES, CacheKeys.SUPPLIERS]);
+  },
+
+  // ==========================================
+  // DATA MANAGEMENT
+  // ==========================================
   async clearAllData(): Promise<void> {
     if (supabase) {
+      // Supplier-side cleanup
+      await supabase.from('supplier_payment_allocations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('supplier_payments').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('purchase_items').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('purchases').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('suppliers').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      // Customer-side cleanup
       await supabase.from('register_cash_movements').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       await supabase.from('register_sessions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       await supabase.from('payment_allocations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
