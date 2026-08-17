@@ -3,6 +3,7 @@ import { Inter, Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
 import { POSProvider } from '@/context/POSContext';
 import { ToastProvider } from '@/context/ToastContext';
+import { AuthProvider } from '@/context/AuthContext';
 import { GlobalScrollFix } from '@/components/ui/GlobalScrollFix';
 
 const inter = Inter({
@@ -19,7 +20,7 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'Buraq Wholesale POS & Accounts Ledger',
+  title: 'VEYRO Wholesale POS & Accounts Ledger',
   description: 'High-performance wholesale point of sale terminal and customer account ledger management system.',
 };
 
@@ -33,7 +34,9 @@ export default function RootLayout({
       <body className={`${inter.className} bg-slate-50 text-slate-900 antialiased selection:bg-slate-900 selection:text-white`}>
         <GlobalScrollFix />
         <ToastProvider>
-          <POSProvider>{children}</POSProvider>
+          <AuthProvider>
+            <POSProvider>{children}</POSProvider>
+          </AuthProvider>
         </ToastProvider>
       </body>
     </html>

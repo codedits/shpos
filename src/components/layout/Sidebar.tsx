@@ -18,9 +18,11 @@ import {
   Database,
   Truck,
   ClipboardList,
+  LogOut,
 } from 'lucide-react';
 import { wholesaleService } from '@/services/wholesaleService';
 import { BusinessSettings } from '@/types/wholesale';
+import { useAuth } from '@/context/AuthContext';
 
 interface NavGroup {
   title: string;
@@ -61,9 +63,10 @@ const NAV_GROUPS: NavGroup[] = [
 
 export const Sidebar: React.FC = () => {
   const pathname = usePathname();
+  const { logout, username } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [settings, setSettings] = useState<BusinessSettings>({
-    business_name: 'BURAQ COLLECTION',
+    business_name: 'VEYRO Wholesale POS',
     phone: '',
     address: '',
     currency_symbol: 'Rs.',
@@ -85,16 +88,21 @@ export const Sidebar: React.FC = () => {
       {/* Brand Header */}
       <div className={`border-b border-slate-200 flex items-center ${collapsed ? 'p-3 justify-center' : 'px-5 py-4'}`}>
         <Link href="/" className="flex items-center space-x-3 shrink-0 group">
-          <div className="w-9 h-9 bg-gradient-to-br from-slate-800 to-slate-950 rounded-lg flex items-center justify-center text-white shrink-0 shadow-sm transition-transform group-hover:scale-105">
-            <Store className="w-4.5 h-4.5 text-white" />
+          <div className="w-9 h-9 bg-gradient-to-br from-indigo-700 via-slate-900 to-slate-950 rounded-xl flex items-center justify-center text-white shrink-0 shadow-sm transition-transform group-hover:scale-105">
+            <Store className="w-4.5 h-4.5 text-indigo-300" />
           </div>
           {!collapsed && (
             <div className="overflow-hidden">
-              <h1 className="font-extrabold text-slate-900 text-sm leading-tight tracking-tight uppercase font-heading truncate">
-                {settings.business_name}
-              </h1>
-              <p className="text-[10px] font-mono font-medium text-slate-400 tracking-wider uppercase">
-                Wholesale Ledger
+              <div className="flex items-center space-x-1.5">
+                <h1 className="font-black text-slate-900 text-base leading-none tracking-tight font-heading">
+                  VEYRO
+                </h1>
+                <span className="px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-900 text-[9px] font-extrabold font-mono uppercase">
+                  POS
+                </span>
+              </div>
+              <p className="text-[10px] font-mono font-bold text-slate-400 tracking-wider uppercase mt-1 truncate">
+                {settings.business_name || 'Wholesale Terminal'}
               </p>
             </div>
           )}
@@ -105,7 +113,7 @@ export const Sidebar: React.FC = () => {
       <div className={`border-b border-slate-100 ${collapsed ? 'p-2' : 'px-4 py-3'}`}>
         <Link
           href="/orders/new"
-          className={`btn-press flex items-center justify-center space-x-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg transition shadow-sm hover:shadow-md ${
+          className={`btn-press flex items-center justify-center space-x-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition shadow-sm hover:shadow-md ${
             collapsed ? 'w-full p-2.5' : 'w-full py-2.5 px-4'
           }`}
         >
@@ -133,7 +141,7 @@ export const Sidebar: React.FC = () => {
                     key={item.href}
                     href={item.href}
                     title={collapsed ? item.label : undefined}
-                    className={`btn-press flex items-center rounded-lg text-xs font-semibold transition-all relative ${
+                    className={`btn-press flex items-center rounded-xl text-xs font-semibold transition-all relative ${
                       collapsed
                         ? 'justify-center p-2.5'
                         : 'space-x-3 px-3.5 py-2.5'
@@ -162,21 +170,44 @@ export const Sidebar: React.FC = () => {
         ))}
       </nav>
 
-      {/* Footer: DB Status + Collapse Toggle */}
-      <div className="border-t border-slate-200 bg-slate-50/80">
+      {/* Footer: DB Status + Logout + Collapse Toggle */}
+      <div className="border-t border-slate-200 bg-slate-50/80 space-y-0.5">
+        {/* User Session & Logout Button */}
+        <div className={`flex items-center ${collapsed ? 'justify-center py-2' : 'px-4 py-2 justify-between'}`}>
+          {!collapsed && (
+            <div className="flex items-center space-x-2 truncate">
+              <div className="w-6 h-6 rounded-full bg-indigo-900 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+                {(username || 'A').slice(0, 1).toUpperCase()}
+              </div>
+              <span className="text-xs font-bold text-slate-700 truncate font-mono">
+                {username || 'Admin'}
+              </span>
+            </div>
+          )}
+          <button
+            onClick={logout}
+            className={`text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition btn-press flex items-center ${
+              collapsed ? 'p-2' : 'p-1.5'
+            }`}
+            title="Sign Out of VEYRO POS"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
+
         {/* DB Connection Badge */}
-        <div className={`flex items-center ${collapsed ? 'justify-center py-3' : 'px-5 py-3 justify-between'}`}>
-          <div className={`flex items-center space-x-1.5 ${collapsed ? '' : ''}`}>
+        <div className={`flex items-center ${collapsed ? 'justify-center py-2' : 'px-4 py-2 justify-between'}`}>
+          <div className="flex items-center space-x-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse-glow shrink-0" />
             {!collapsed && (
               <>
                 <Database className="w-3 h-3 text-emerald-600" />
-                <span className="text-[10px] font-mono font-bold text-emerald-700 uppercase">Live</span>
+                <span className="text-[10px] font-mono font-bold text-emerald-700 uppercase">Live DB</span>
               </>
             )}
           </div>
           {!collapsed && (
-            <span className="text-[10px] font-mono text-slate-400">{settings.phone || 'Supabase'}</span>
+            <span className="text-[10px] font-mono text-slate-400">VEYRO v0.1</span>
           )}
         </div>
 
@@ -184,11 +215,11 @@ export const Sidebar: React.FC = () => {
         <button
           onClick={() => setCollapsed(!collapsed)}
           className={`w-full flex items-center border-t border-slate-200 bg-white hover:bg-slate-50 transition text-slate-500 hover:text-slate-700 ${
-            collapsed ? 'justify-center py-3' : 'px-5 py-2.5 justify-between'
+            collapsed ? 'justify-center py-3' : 'px-4 py-2.5 justify-between'
           }`}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          {!collapsed && <span className="text-[10px] font-bold uppercase tracking-wide">Collapse</span>}
+          {!collapsed && <span className="text-[10px] font-bold uppercase tracking-wide font-mono">Collapse Menu</span>}
           {collapsed ? (
             <ChevronRight className="w-4 h-4" />
           ) : (
