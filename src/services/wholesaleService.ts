@@ -664,6 +664,7 @@ export const wholesaleService = {
               payment_status: o.payment_status,
               notes: o.notes,
               idempotency_key: o.idempotency_key,
+              due_date: o.due_date || null,
               is_voided: o.is_voided ?? false,
               voided_at: o.voided_at,
               void_reason: o.void_reason,
@@ -775,6 +776,7 @@ export const wholesaleService = {
               : 'UNPAID',
             notes: data.notes,
             idempotency_key: data.idempotency_key,
+            due_date: data.due_date || null,
             is_voided: data.is_voided ?? false,
             voided_at: data.voided_at,
             void_reason: data.void_reason,
@@ -850,6 +852,7 @@ export const wholesaleService = {
         p_notes: input.notes || null,
         p_order_date: input.order_date || new Date().toISOString(),
         p_idempotency_key: idempotencyKey,
+        p_due_date: input.due_date || null,
       });
 
       if (error) {
@@ -963,6 +966,7 @@ export const wholesaleService = {
       notes: input.notes,
       items: orderItems,
       idempotency_key: idempotencyKey,
+      due_date: input.due_date || null,
       is_voided: false,
       created_at: orderDate,
       updated_at: orderDate,
@@ -1052,6 +1056,23 @@ export const wholesaleService = {
     }
 
     CacheManager.invalidate([CacheKeys.ORDERS, CacheKeys.PRODUCTS, CacheKeys.CUSTOMERS, CacheKeys.PAYMENTS]);
+  },
+
+  async updateOrderDueDate(orderId: string, dueDate: string | null): Promise<void> {
+    if (supabase) {
+      const { error } = await supabase
+        .from('orders')
+        .update({ due_date: dueDate, updated_at: new Date().toISOString() })
+        .eq('id', orderId);
+
+      if (error) throw new Error(error.message);
+    }
+
+    const localOrders = getLocal<Order[]>(STORAGE_KEYS.ORDERS, []);
+    const updatedList = localOrders.map((o) => (o.id === orderId ? { ...o, due_date: dueDate } : o));
+    setLocal(STORAGE_KEYS.ORDERS, updatedList);
+
+    CacheManager.invalidate([CacheKeys.ORDERS, CacheKeys.CUSTOMERS]);
   },
 
   async voidPayment(paymentId: string, reason = 'Payment Reversed', userId = 'system'): Promise<void> {

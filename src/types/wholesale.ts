@@ -92,6 +92,7 @@ export interface Order {
   payment_status: PaymentStatus;
   notes?: string | null;
   idempotency_key?: string | null;
+  due_date?: string | null;
   is_voided: boolean;
   voided_at?: string | null;
   void_reason?: string | null;
@@ -196,6 +197,7 @@ export interface CreateOrderInput {
   payment_method: PaymentMethod;
   notes?: string;
   order_date?: string;
+  due_date?: string | null;
   idempotency_key?: string;
 }
 

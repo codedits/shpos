@@ -319,6 +319,12 @@ export default function InvoiceDetailPage() {
                     </span>
                   )}
                 </div>
+                {order.due_date && !isFullySettled && !order.is_voided && (
+                  <p className="text-amber-800 font-bold text-[11px] mt-1.5 flex items-center justify-end space-x-1 font-mono">
+                    <Clock className="w-3 h-3 text-amber-700" />
+                    <span>Deadline: {formatDatePKT(order.due_date, false)}</span>
+                  </p>
+                )}
                 {order.notes && <p className="text-slate-500 text-[11px] mt-1">Remarks: {order.notes}</p>}
               </div>
             </div>
@@ -521,6 +527,11 @@ export default function InvoiceDetailPage() {
                 <span className="font-bold text-slate-900">{customer?.name || 'Walk-in'}</span>
               </p>
               {customer?.phone && <p className="text-slate-500">Phone: {customer.phone}</p>}
+              {order.due_date && !isFullySettled && !order.is_voided && (
+                <p className="text-amber-800 font-bold text-[10px]">
+                  Payment Deadline: {formatDatePKT(order.due_date, false)}
+                </p>
+              )}
             </div>
 
             {/* Items List */}

@@ -26,6 +26,7 @@ import {
   Grid,
   List,
   Check,
+  Clock,
 } from 'lucide-react';
 import { wholesaleService } from '@/services/wholesaleService';
 
@@ -58,7 +59,14 @@ function CreateOrderForm() {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [amountPaidStr, setAmountPaidStr] = useState<string>('0');
   const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Bank' | 'Other'>('Cash');
+  const [dueDate, setDueDate] = useState<string>('');
   const [orderNotes, setOrderNotes] = useState<string>('');
+
+  const setPresetDueDate = (days: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    setDueDate(d.toISOString().split('T')[0]);
+  };
 
   // Bulk Matrix Entry Temporary State per product: { [productId]: { [color]: { [size]: qty } } }
   const [matrixInputs, setMatrixInputs] = useState<Record<string, Record<string, Record<FixedSize, string>>>>({});
@@ -429,6 +437,7 @@ function CreateOrderForm() {
         })),
         amount_paid: amountPaid,
         payment_method: paymentMethod,
+        due_date: dueDate ? new Date(dueDate).toISOString() : null,
         notes: orderNotes.trim() || undefined,
         idempotency_key: `ord_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       });
@@ -950,6 +959,62 @@ function CreateOrderForm() {
                     Rs. {Math.round(remainingAmount).toLocaleString()}
                   </span>
                 </div>
+
+                {/* Optional Payment Deadline / Promise Date (Enabled if Remaining Balance > 0) */}
+                {remainingAmount > 0 && (
+                  <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200/80 space-y-2 animate-fade-in">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-amber-950 uppercase font-sans flex items-center space-x-1.5">
+                        <Clock className="w-3.5 h-3.5 text-amber-700" />
+                        <span>Payment Deadline / Promise Date</span>
+                      </label>
+                      {dueDate && (
+                        <button
+                          type="button"
+                          onClick={() => setDueDate('')}
+                          className="text-[10px] text-amber-800 hover:text-amber-950 font-bold underline"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center space-x-1.5">
+                      <input
+                        type="date"
+                        value={dueDate}
+                        onChange={(e) => setDueDate(e.target.value)}
+                        className="w-full p-2 rounded-lg border border-amber-300 bg-white text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+
+                    {/* Quick Preset Chips */}
+                    <div className="flex items-center space-x-1 text-[10px] font-mono">
+                      <span className="text-amber-800 font-semibold mr-1">Presets:</span>
+                      <button
+                        type="button"
+                        onClick={() => setPresetDueDate(7)}
+                        className="px-2 py-0.5 rounded bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold transition"
+                      >
+                        +7 Days
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPresetDueDate(15)}
+                        className="px-2 py-0.5 rounded bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold transition"
+                      >
+                        +15 Days
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPresetDueDate(30)}
+                        className="px-2 py-0.5 rounded bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold transition"
+                      >
+                        +30 Days
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Notes */}
                 <div>

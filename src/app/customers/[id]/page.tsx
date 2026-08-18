@@ -22,6 +22,8 @@ import {
   CheckCircle2,
   Calendar,
   FileText,
+  Clock,
+  Check,
 } from 'lucide-react';
 import { formatDatePKT } from '@/lib/dateUtils';
 
@@ -37,9 +39,28 @@ export default function CustomerProfilePage() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Deadline editing state
+  const [editingDueDateOrderId, setEditingDueDateOrderId] = useState<string | null>(null);
+  const [newDueDateVal, setNewDueDateVal] = useState<string>('');
+
   // Delete modal state
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  const handleUpdateDueDate = async (orderId: string, dueDate: string | null) => {
+    try {
+      await wholesaleService.updateOrderDueDate(orderId, dueDate ? new Date(dueDate).toISOString() : null);
+      toast.success('Deadline Updated', 'Payment due date has been updated.');
+      setEditingDueDateOrderId(null);
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === orderId ? { ...o, due_date: dueDate ? new Date(dueDate).toISOString() : null } : o
+        )
+      );
+    } catch (err: any) {
+      toast.error('Failed to update deadline', err.message);
+    }
+  };
 
   useEffect(() => {
     async function load() {
@@ -237,53 +258,153 @@ export default function CustomerProfilePage() {
                   <th className="p-3.5 text-right">Total Amount</th>
                   <th className="p-3.5 text-right">Paid</th>
                   <th className="p-3.5 text-right">Balance Due</th>
+                  <th className="p-3.5 text-center">Payment Deadline</th>
                   <th className="p-3.5 text-center">Status</th>
                   <th className="p-3.5 text-right pr-4">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {orders.length > 0 ? (
-                  orders.map((o) => (
-                    <tr key={o.id} className="hover:bg-slate-50/60 transition">
-                      <td className="p-3.5 pl-4 font-bold text-slate-900">
-                        <Link href={`/invoices/${o.invoice_number}`} className="hover:underline">
-                          {o.invoice_number}
-                        </Link>
-                      </td>
-                      <td className="p-3.5 text-slate-500">{formatDatePKT(o.order_date, false)}</td>
-                      <td className="p-3.5 text-right font-bold text-slate-900">
-                        Rs. {o.total_amount.toLocaleString()}
-                      </td>
-                      <td className="p-3.5 text-right text-emerald-700 font-semibold">
-                        Rs. {o.amount_paid.toLocaleString()}
-                      </td>
-                      <td className="p-3.5 text-right font-bold text-rose-700">
-                        Rs. {o.remaining_amount.toLocaleString()}
-                      </td>
-                      <td className="p-3.5 text-center">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                          o.payment_status === 'PAID'
-                            ? 'bg-emerald-50 text-emerald-800'
-                            : o.payment_status === 'PARTIALLY_PAID'
-                            ? 'bg-amber-50 text-amber-800'
-                            : 'bg-rose-50 text-rose-800'
-                        }`}>
-                          {o.payment_status.replace('_', ' ')}
-                        </span>
-                      </td>
-                      <td className="p-3.5 text-right pr-4">
-                        <Link
-                          href={`/invoices/${o.invoice_number}`}
-                          className="text-xs font-bold text-slate-900 hover:underline"
-                        >
-                          View Voucher →
-                        </Link>
-                      </td>
-                    </tr>
-                  ))
+                  orders.map((o) => {
+                    const now = new Date();
+                    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+                    let diffDays: number | null = null;
+                    let isOverdue = false;
+                    let isDueToday = false;
+
+                    if (o.due_date && o.remaining_amount > 0) {
+                      const dObj = new Date(o.due_date);
+                      const dueTime = new Date(dObj.getFullYear(), dObj.getMonth(), dObj.getDate()).getTime();
+                      diffDays = Math.round((dueTime - todayMidnight) / (1000 * 60 * 60 * 24));
+                      isOverdue = diffDays < 0;
+                      isDueToday = diffDays === 0;
+                    }
+
+                    const isEditingThis = editingDueDateOrderId === o.id;
+
+                    return (
+                      <tr key={o.id} className="hover:bg-slate-50/60 transition">
+                        <td className="p-3.5 pl-4 font-bold text-slate-900">
+                          <Link href={`/invoices/${o.invoice_number}`} className="hover:underline">
+                            {o.invoice_number}
+                          </Link>
+                        </td>
+                        <td className="p-3.5 text-slate-500">{formatDatePKT(o.order_date, false)}</td>
+                        <td className="p-3.5 text-right font-bold text-slate-900">
+                          Rs. {o.total_amount.toLocaleString()}
+                        </td>
+                        <td className="p-3.5 text-right text-emerald-700 font-semibold">
+                          Rs. {o.amount_paid.toLocaleString()}
+                        </td>
+                        <td className="p-3.5 text-right font-bold text-rose-700">
+                          Rs. {o.remaining_amount.toLocaleString()}
+                        </td>
+
+                        {/* Payment Deadline Column */}
+                        <td className="p-3.5 text-center">
+                          {isEditingThis ? (
+                            <div className="flex items-center justify-center space-x-1">
+                              <input
+                                type="date"
+                                autoFocus
+                                value={newDueDateVal}
+                                onChange={(e) => setNewDueDateVal(e.target.value)}
+                                className="p-1 rounded border border-amber-300 text-[11px] font-mono"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateDueDate(o.id, newDueDateVal)}
+                                className="p-1 rounded bg-slate-900 text-white hover:bg-slate-800"
+                                title="Save"
+                              >
+                                <Check className="w-3 h-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingDueDateOrderId(null)}
+                                className="p-1 rounded bg-slate-200 text-slate-700 hover:bg-slate-300 text-[10px]"
+                                title="Cancel"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ) : o.due_date ? (
+                            <div className="flex items-center justify-center space-x-1.5">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
+                                  o.remaining_amount === 0
+                                    ? 'bg-slate-100 text-slate-500'
+                                    : isOverdue
+                                    ? 'bg-rose-100 text-rose-800'
+                                    : isDueToday
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-blue-50 text-blue-800'
+                                }`}
+                              >
+                                {o.remaining_amount === 0
+                                  ? formatDatePKT(o.due_date, false)
+                                  : isOverdue
+                                  ? `Overdue ${Math.abs(diffDays!)}d`
+                                  : isDueToday
+                                  ? 'Due Today'
+                                  : `${formatDatePKT(o.due_date, false)} (${diffDays}d)`}
+                              </span>
+                              {o.remaining_amount > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingDueDateOrderId(o.id);
+                                    setNewDueDateVal(o.due_date ? o.due_date.split('T')[0] : '');
+                                  }}
+                                  className="text-slate-400 hover:text-slate-700"
+                                  title="Edit deadline"
+                                >
+                                  <Edit2 className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                          ) : o.remaining_amount > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingDueDateOrderId(o.id);
+                                setNewDueDateVal('');
+                              }}
+                              className="text-[10px] font-bold text-amber-700 hover:underline flex items-center justify-center space-x-1 mx-auto"
+                            >
+                              <Clock className="w-3 h-3" />
+                              <span>+ Set Deadline</span>
+                            </button>
+                          ) : (
+                            <span className="text-slate-400 text-[10px]">—</span>
+                          )}
+                        </td>
+
+                        <td className="p-3.5 text-center">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                            o.payment_status === 'PAID'
+                              ? 'bg-emerald-50 text-emerald-800'
+                              : o.payment_status === 'PARTIALLY_PAID'
+                              ? 'bg-amber-50 text-amber-800'
+                              : 'bg-rose-50 text-rose-800'
+                          }`}>
+                            {o.payment_status.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td className="p-3.5 text-right pr-4">
+                          <Link
+                            href={`/invoices/${o.invoice_number}`}
+                            className="text-xs font-bold text-slate-900 hover:underline"
+                          >
+                            View Voucher →
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })
                 ) : (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-slate-400 text-xs">
+                    <td colSpan={8} className="p-8 text-center text-slate-400 text-xs">
                       No invoices recorded for this client yet.
                     </td>
                   </tr>

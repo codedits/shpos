@@ -25,6 +25,8 @@ import {
   Calendar,
   Layers,
   Inbox,
+  Phone,
+  AlertCircle,
 } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
@@ -57,6 +59,7 @@ export default function DashboardPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [clearModalOpen, setClearModalOpen] = useState(false);
   const [timeRange, setTimeRange] = useState<'month' | 'today' | 'all'>('month');
+  const [deadlineFilter, setDeadlineFilter] = useState<'overdue' | 'upcoming' | 'all'>('overdue');
 
   const loadData = async (forceRefresh = false) => {
     try {
@@ -153,6 +156,54 @@ export default function DashboardPage() {
         .slice(0, 5),
     [customers]
   );
+
+  // Payment Deadlines & Overdue Calculation
+  const ordersWithDeadlines = useMemo(() => {
+    const now = new Date();
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+    return allActiveOrders
+      .filter((o) => (o.remaining_amount || 0) > 0 && o.due_date)
+      .map((o) => {
+        const dueDateObj = new Date(o.due_date!);
+        const dueTime = new Date(dueDateObj.getFullYear(), dueDateObj.getMonth(), dueDateObj.getDate()).getTime();
+        const diffDays = Math.round((dueTime - todayMidnight) / (1000 * 60 * 60 * 24));
+        const isOverdue = diffDays < 0;
+        const isDueToday = diffDays === 0;
+        const isDueSoon = diffDays > 0 && diffDays <= 3;
+
+        return {
+          ...o,
+          diffDays,
+          isOverdue,
+          isDueToday,
+          isDueSoon,
+          daysOverdue: isOverdue ? Math.abs(diffDays) : 0,
+        };
+      })
+      .sort((a, b) => a.diffDays - b.diffDays);
+  }, [allActiveOrders]);
+
+  const overdueOrdersList = useMemo(
+    () => ordersWithDeadlines.filter((o) => o.isOverdue),
+    [ordersWithDeadlines]
+  );
+
+  const upcomingDeadlinesList = useMemo(
+    () => ordersWithDeadlines.filter((o) => !o.isOverdue),
+    [ordersWithDeadlines]
+  );
+
+  const totalOverdueAmount = useMemo(
+    () => overdueOrdersList.reduce((sum, o) => sum + (o.remaining_amount || 0), 0),
+    [overdueOrdersList]
+  );
+
+  const displayedDeadlines = useMemo(() => {
+    if (deadlineFilter === 'overdue') return overdueOrdersList;
+    if (deadlineFilter === 'upcoming') return upcomingDeadlinesList;
+    return ordersWithDeadlines;
+  }, [deadlineFilter, overdueOrdersList, upcomingDeadlinesList, ordersWithDeadlines]);
 
   const recentOrders = useMemo(() => orders.slice(0, 6), [orders]);
 
@@ -660,6 +711,204 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* ===== PAYMENT DEADLINES & OVERDUE ALERTS (Customer Credit Deadline Tracking) ===== */}
+        <div className="rounded-3xl bg-white border border-slate-200/80 p-6 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div className="flex items-center space-x-3">
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
+                overdueOrdersList.length > 0
+                  ? 'bg-rose-100 text-rose-700'
+                  : 'bg-amber-100 text-amber-700'
+              }`}>
+                {overdueOrdersList.length > 0 ? (
+                  <AlertCircle className="w-5 h-5" />
+                ) : (
+                  <Clock className="w-5 h-5" />
+                )}
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h3 className="font-extrabold text-sm sm:text-base text-slate-900 tracking-tight">
+                    Payment Deadlines & Overdue Alerts
+                  </h3>
+                  {overdueOrdersList.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-rose-500 text-white tracking-wider animate-pulse">
+                      {overdueOrdersList.length} Missed
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500 font-sans">
+                  {overdueOrdersList.length > 0
+                    ? `Rs. ${totalOverdueAmount.toLocaleString()} overdue across ${overdueOrdersList.length} client accounts`
+                    : `${ordersWithDeadlines.length} scheduled payment deadlines being monitored`}
+                </p>
+              </div>
+            </div>
+
+            {/* Filter Tabs */}
+            <div className="flex items-center space-x-1.5 p-1 bg-slate-100/80 rounded-2xl text-xs font-semibold text-slate-700 self-start sm:self-auto font-sans">
+              <button
+                type="button"
+                onClick={() => setDeadlineFilter('overdue')}
+                className={`px-3 py-1.5 rounded-xl transition flex items-center space-x-1.5 ${
+                  deadlineFilter === 'overdue'
+                    ? 'bg-rose-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>Overdue</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                  deadlineFilter === 'overdue' ? 'bg-rose-800 text-white' : 'bg-slate-200 text-slate-700'
+                }`}>
+                  {overdueOrdersList.length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeadlineFilter('upcoming')}
+                className={`px-3 py-1.5 rounded-xl transition flex items-center space-x-1.5 ${
+                  deadlineFilter === 'upcoming'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>Upcoming</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                  deadlineFilter === 'upcoming' ? 'bg-slate-700 text-white' : 'bg-slate-200 text-slate-700'
+                }`}>
+                  {upcomingDeadlinesList.length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeadlineFilter('all')}
+                className={`px-3 py-1.5 rounded-xl transition ${
+                  deadlineFilter === 'all'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                All ({ordersWithDeadlines.length})
+              </button>
+            </div>
+          </div>
+
+          {/* List of Deadline Alerts */}
+          {displayedDeadlines.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+              {displayedDeadlines.map((ord) => {
+                const customer = customers.find((c) => c.id === ord.customer_id);
+                const custName = customer?.name || ord.customer?.name || 'Customer';
+                const custPhone = customer?.phone || ord.customer?.phone;
+
+                return (
+                  <div
+                    key={ord.id}
+                    className={`p-4 rounded-2xl border transition space-y-3 flex flex-col justify-between ${
+                      ord.isOverdue
+                        ? 'bg-rose-50/40 border-rose-200/90 hover:border-rose-300 hover:bg-rose-50/70'
+                        : ord.isDueToday
+                        ? 'bg-amber-50/40 border-amber-200 hover:border-amber-300'
+                        : 'bg-slate-50/50 border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <Link
+                            href={`/customers/${ord.customer_id}`}
+                            className="font-extrabold text-sm text-slate-900 hover:underline block"
+                          >
+                            {custName}
+                          </Link>
+                          {custPhone ? (
+                            <a
+                              href={`tel:${custPhone}`}
+                              className="text-[11px] font-mono text-slate-500 hover:text-slate-900 flex items-center space-x-1 mt-0.5"
+                              title="Call Customer"
+                            >
+                              <Phone className="w-3 h-3 text-slate-400" />
+                              <span>{custPhone}</span>
+                            </a>
+                          ) : (
+                            <span className="text-[11px] font-mono text-slate-400">No phone saved</span>
+                          )}
+                        </div>
+
+                        {/* Overdue/Due status badge */}
+                        <span
+                          className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold uppercase font-mono tracking-wider shrink-0 ${
+                            ord.isOverdue
+                              ? 'bg-rose-600 text-white'
+                              : ord.isDueToday
+                              ? 'bg-amber-500 text-white'
+                              : 'bg-blue-100 text-blue-800'
+                          }`}
+                        >
+                          {ord.isOverdue
+                            ? `Overdue ${ord.daysOverdue}d`
+                            : ord.isDueToday
+                            ? 'Due Today'
+                            : `Due in ${ord.diffDays}d`}
+                        </span>
+                      </div>
+
+                      {/* Invoice & Deadline Details */}
+                      <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs font-mono">
+                        <span className="text-slate-500">
+                          Inv:{' '}
+                          <Link href={`/invoices/${ord.invoice_number}`} className="font-bold text-slate-700 hover:underline">
+                            {ord.invoice_number}
+                          </Link>
+                        </span>
+                        <span className="font-bold text-slate-700">
+                          Deadline: {ord.due_date ? formatDatePKT(ord.due_date, false) : 'N/A'}
+                        </span>
+                      </div>
+
+                      {/* Remaining Balance */}
+                      <div className="flex items-center justify-between text-xs font-mono pt-1">
+                        <span className="text-slate-500 font-sans">Remaining Due:</span>
+                        <span className="font-black text-sm text-rose-700">
+                          Rs. {Math.round(ord.remaining_amount).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="pt-2 border-t border-slate-200/60 grid grid-cols-2 gap-2">
+                      <Link
+                        href={`/customers/${ord.customer_id}`}
+                        className="btn-press py-2 px-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold text-center transition"
+                      >
+                        View Ledger
+                      </Link>
+                      <Link
+                        href={`/payments/new?customer_id=${ord.customer_id}&order_id=${ord.id}`}
+                        className="btn-press py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold text-center shadow-xs transition flex items-center justify-center space-x-1"
+                      >
+                        <DollarSign className="w-3.5 h-3.5" />
+                        <span>Collect Cash</span>
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="py-8 text-center space-y-2 text-slate-400 text-xs">
+              <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
+              <p className="font-semibold text-slate-600">
+                {deadlineFilter === 'overdue'
+                  ? 'All customer payment deadlines are on track! No overdue payments.'
+                  : deadlineFilter === 'upcoming'
+                  ? 'No upcoming payment deadlines scheduled in the next 3 days.'
+                  : 'No payment deadlines recorded yet. You can set deadlines when booking credit sales in New Order.'}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* ===== Operational Register: Recent Orders & Top Debtors ===== */}
