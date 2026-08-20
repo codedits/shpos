@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { wholesaleService } from '@/services/wholesaleService';
 import { Payment } from '@/types/wholesale';
+import { Pagination } from '@/components/ui/Pagination';
 import {
   CreditCard,
   Plus,
@@ -33,6 +34,10 @@ export default function PaymentsPage() {
   const [paymentToVoid, setPaymentToVoid] = useState<Payment | null>(null);
   const [voiding, setVoiding] = useState(false);
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
+
   const loadPayments = async (forceRefresh = false) => {
     try {
       if (forceRefresh) setRefreshing(true);
@@ -48,6 +53,11 @@ export default function PaymentsPage() {
   useEffect(() => {
     loadPayments();
   }, []);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, methodFilter]);
 
   const handleConfirmVoidPayment = async () => {
     if (!paymentToVoid) return;
@@ -79,6 +89,11 @@ export default function PaymentsPage() {
       return matchMethod && matchSearch;
     });
   }, [payments, methodFilter, searchQuery]);
+
+  const paginatedPayments = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredPayments.slice(start, start + pageSize);
+  }, [filteredPayments, currentPage, pageSize]);
 
   const totalCollectedSum = useMemo(() => {
     return payments
@@ -195,8 +210,8 @@ export default function PaymentsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 font-mono">
-                {filteredPayments.length > 0 ? (
-                  filteredPayments.map((p, idx) => (
+                {paginatedPayments.length > 0 ? (
+                  paginatedPayments.map((p, idx) => (
                     <tr
                       key={p.id}
                       className={`table-row-hover transition ${
@@ -278,6 +293,22 @@ export default function PaymentsPage() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Footer */}
+          {!loading && filteredPayments.length > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalItems={filteredPayments.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setCurrentPage(1);
+              }}
+              pageSizeOptions={[15, 30, 50]}
+              itemLabel="payments"
+            />
+          )}
         </div>
       </div>
 

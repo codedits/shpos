@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { wholesaleService } from '@/services/wholesaleService';
 import { Order } from '@/types/wholesale';
+import { Pagination } from '@/components/ui/Pagination';
 import {
   ShoppingCart,
   Plus,
@@ -26,6 +27,10 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
+
   const loadOrders = async (forceRefresh = false) => {
     try {
       setLoading(true);
@@ -42,6 +47,11 @@ export default function OrdersPage() {
     loadOrders();
   }, []);
 
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter]);
+
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
       const matchStatus = statusFilter === 'all' || o.payment_status === statusFilter;
@@ -53,6 +63,11 @@ export default function OrdersPage() {
       return matchStatus && matchSearch;
     });
   }, [orders, statusFilter, searchQuery]);
+
+  const paginatedOrders = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredOrders.slice(start, start + pageSize);
+  }, [filteredOrders, currentPage, pageSize]);
 
   const activeOrders = useMemo(() => orders.filter((o) => !o.is_voided), [orders]);
 
@@ -195,8 +210,8 @@ export default function OrdersPage() {
                       Loading orders register...
                     </td>
                   </tr>
-                ) : filteredOrders.length > 0 ? (
-                  filteredOrders.map((o, idx) => (
+                ) : paginatedOrders.length > 0 ? (
+                  paginatedOrders.map((o, idx) => (
                     <tr key={o.id} className={`table-row-hover transition ${idx % 2 === 1 ? 'bg-slate-50/50' : ''}`}>
                       <td className="p-4 font-bold text-slate-900">
                         <Link href={`/invoices/${o.invoice_number}`} className="hover:underline">
@@ -260,6 +275,22 @@ export default function OrdersPage() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Footer */}
+          {!loading && filteredOrders.length > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalItems={filteredOrders.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setCurrentPage(1);
+              }}
+              pageSizeOptions={[15, 30, 50]}
+              itemLabel="orders"
+            />
+          )}
         </div>
       </div>
     </AppLayout>

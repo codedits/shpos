@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { wholesaleService } from '@/services/wholesaleService';
 import { Order } from '@/types/wholesale';
+import { Pagination } from '@/components/ui/Pagination';
 import {
   FileText,
   Search,
@@ -25,6 +26,10 @@ export default function InvoicesListPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
+
   const loadInvoices = async (forceRefresh = false) => {
     try {
       setLoading(true);
@@ -38,6 +43,11 @@ export default function InvoicesListPage() {
   useEffect(() => {
     loadInvoices();
   }, []);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter]);
 
   // Filter out voided orders for metric sums
   const activeOrders = useMemo(() => orders.filter((o) => !o.is_voided), [orders]);
@@ -57,6 +67,11 @@ export default function InvoicesListPage() {
       return matchStatus && matchQuery;
     });
   }, [orders, searchQuery, statusFilter]);
+
+  const paginatedInvoices = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredInvoices.slice(start, start + pageSize);
+  }, [filteredInvoices, currentPage, pageSize]);
 
   const totalInvoicedAmount = useMemo(
     () => activeOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0),
@@ -203,8 +218,8 @@ export default function InvoicesListPage() {
                       Loading invoices...
                     </td>
                   </tr>
-                ) : filteredInvoices.length > 0 ? (
-                  filteredInvoices.map((o, idx) => {
+                ) : paginatedInvoices.length > 0 ? (
+                  paginatedInvoices.map((o, idx) => {
                     const isVoided = Boolean(o.is_voided);
                     const remainingDue = isVoided ? 0 : o.remaining_amount;
 
@@ -284,6 +299,22 @@ export default function InvoicesListPage() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Footer */}
+          {!loading && filteredInvoices.length > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalItems={filteredInvoices.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setCurrentPage(1);
+              }}
+              pageSizeOptions={[15, 30, 50]}
+              itemLabel="invoices"
+            />
+          )}
         </div>
       </div>
     </AppLayout>
