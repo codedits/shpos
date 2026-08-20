@@ -62,10 +62,48 @@ function CreateOrderForm() {
   const [dueDate, setDueDate] = useState<string>('');
   const [orderNotes, setOrderNotes] = useState<string>('');
 
+  // Quick Customer Creation Modal State
+  const [showQuickCustomerModal, setShowQuickCustomerModal] = useState(false);
+  const [newCustName, setNewCustName] = useState('');
+  const [newCustPhone, setNewCustPhone] = useState('');
+  const [newCustAddress, setNewCustAddress] = useState('');
+  const [savingCustomer, setSavingCustomer] = useState(false);
+
   const setPresetDueDate = (days: number) => {
     const d = new Date();
     d.setDate(d.getDate() + days);
     setDueDate(d.toISOString().split('T')[0]);
+  };
+
+  const handleCreateQuickCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCustName.trim()) {
+      toast.warning('Customer Name Required', 'Please enter client name.');
+      return;
+    }
+    try {
+      setSavingCustomer(true);
+      const created = await wholesaleService.createCustomer({
+        name: newCustName.trim(),
+        phone: newCustPhone.trim() || undefined,
+        address: newCustAddress.trim() || undefined,
+      });
+
+      toast.success('Customer Account Created', `Account created for "${created.name}".`);
+
+      const updatedCustomers = await wholesaleService.getCustomers(true);
+      setCustomers(updatedCustomers);
+      setSelectedCustomerId(created.id);
+
+      setNewCustName('');
+      setNewCustPhone('');
+      setNewCustAddress('');
+      setShowQuickCustomerModal(false);
+    } catch (err: any) {
+      toast.error('Failed to Create Customer', err.message);
+    } finally {
+      setSavingCustomer(false);
+    }
   };
 
   // Bulk Matrix Entry Temporary State per product: { [productId]: { [color]: { [size]: qty } } }
@@ -733,9 +771,20 @@ function CreateOrderForm() {
             <form onSubmit={handleSubmitOrder} className="bg-white rounded-3xl border border-slate-200/90 p-6 shadow-xs space-y-5">
               {/* Customer Account Picker */}
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                  Wholesale Customer *
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                    Wholesale Customer *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowQuickCustomerModal(true)}
+                    className="text-xs font-bold text-slate-900 hover:text-slate-700 flex items-center space-x-1 font-mono bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-xl transition btn-press border border-slate-200"
+                    title="Quick Add New Client Account On-the-Go"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Quick Add</span>
+                  </button>
+                </div>
                 <select
                   value={selectedCustomerId}
                   onChange={(e) => setSelectedCustomerId(e.target.value)}
@@ -1052,6 +1101,101 @@ function CreateOrderForm() {
           </div>
         </div>
       </div>
+
+      {/* Screen-Centered Quick Add Customer Modal */}
+      {showQuickCustomerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in font-sans">
+          <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 p-6 sm:p-7 space-y-5 shadow-2xl animate-scale-in">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-xs">
+                  <User className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-slate-900 tracking-tight font-heading">
+                    Quick Add Customer
+                  </h3>
+                  <p className="text-xs text-slate-500">Create client account on-the-go</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQuickCustomerModal(false)}
+                className="text-slate-400 hover:text-slate-700 p-1 font-mono font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateQuickCustomer} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Customer / Business Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="e.g. Haji Usman Traders / Azam Market"
+                  value={newCustName}
+                  onChange={(e) => setNewCustName(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 font-sans"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Phone Number (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. 0300-1234567"
+                  value={newCustPhone}
+                  onChange={(e) => setNewCustPhone(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Market / Address (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Shop # 14, Main Azam Cloth Market, Lahore"
+                  value={newCustAddress}
+                  onChange={(e) => setNewCustAddress(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 font-sans"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setShowQuickCustomerModal(false)}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition btn-press"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingCustomer}
+                  className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold transition shadow-sm btn-press flex items-center space-x-1.5"
+                >
+                  {savingCustomer ? (
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Save & Select</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }

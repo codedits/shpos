@@ -19,6 +19,7 @@ import {
   Truck,
   ClipboardList,
   LogOut,
+  UserCheck,
 } from 'lucide-react';
 import { wholesaleService } from '@/services/wholesaleService';
 import { BusinessSettings } from '@/types/wholesale';
@@ -50,6 +51,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Customers', href: '/customers', icon: Users },
       { label: 'Payments', href: '/payments', icon: CreditCard },
+      { label: 'Staff & Salary', href: '/staff', icon: UserCheck },
       { label: 'Invoices', href: '/invoices', icon: FileText },
     ],
   },

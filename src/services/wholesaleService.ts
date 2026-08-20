@@ -22,6 +22,10 @@ import {
   SupplierPayment,
   CreatePurchaseInput,
   RecordSupplierPaymentInput,
+  StaffMember,
+  StaffSalaryPayment,
+  CreateStaffInput,
+  RecordSalaryPaymentInput,
 } from '@/types/wholesale';
 
 // Browser Local Storage Keys (Resilient Offline Fallback Layer)
@@ -36,6 +40,8 @@ const STORAGE_KEYS = {
   INVOICE_SEQ: 'wholesale_pos_inv_seq_v2',
   REGISTER_SESSIONS: 'wholesale_pos_register_sessions_v2',
   AUDIT_LOGS: 'wholesale_pos_audit_logs_v2',
+  STAFF: 'wholesale_pos_staff_v2',
+  STAFF_PAYMENTS: 'wholesale_pos_staff_payments_v2',
 };
 
 // Initial Seed Data for offline fallback
@@ -1983,10 +1989,358 @@ export const wholesaleService = {
   },
 
   // ==========================================
+  // STAFF & SALARY TRACKER
+  // ==========================================
+  async getStaffMembers(forceRefresh = false): Promise<StaffMember[]> {
+    return CacheManager.fetchWithCache<StaffMember[]>(
+      CacheKeys.STAFF,
+      async () => {
+        if (supabase) {
+          const { data, error } = await supabase
+            .from('staff_members')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+          if (!error && data) {
+            // Also fetch salary payments to calculate total_paid and total_advances per staff
+            const { data: paymentsData } = await supabase
+              .from('staff_salary_payments')
+              .select('staff_id, amount_paid, transaction_type');
+
+            const paymentsMap: Record<string, number> = {};
+            const advancesMap: Record<string, number> = {};
+            (paymentsData || []).forEach((p) => {
+              const amount = parseFloat(p.amount_paid) || 0;
+              const type = p.transaction_type || 'SALARY';
+              if (type === 'ADVANCE') {
+                advancesMap[p.staff_id] = (advancesMap[p.staff_id] || 0) + amount;
+              } else {
+                paymentsMap[p.staff_id] = (paymentsMap[p.staff_id] || 0) + amount;
+              }
+            });
+
+            return data.map((s: any) => ({
+              id: s.id,
+              name: s.name,
+              phone: s.phone,
+              role: s.role || 'Salesman',
+              monthly_salary: parseFloat(s.monthly_salary) || 0,
+              joining_date: s.joining_date,
+              is_active: s.is_active ?? true,
+              photo_url: s.photo_url || null,
+              documents: Array.isArray(s.documents) ? s.documents : [],
+              total_paid: paymentsMap[s.id] || 0,
+              total_advances: advancesMap[s.id] || 0,
+              created_at: s.created_at,
+              updated_at: s.updated_at,
+            }));
+          }
+        }
+
+        const localStaff = getLocal<StaffMember[]>(STORAGE_KEYS.STAFF, []);
+        const localPayments = getLocal<StaffSalaryPayment[]>(STORAGE_KEYS.STAFF_PAYMENTS, []);
+
+        return localStaff.map((s) => {
+          const staffPays = localPayments.filter((p) => p.staff_id === s.id);
+          const totalPaid = staffPays
+            .filter((p) => (p.transaction_type || 'SALARY') !== 'ADVANCE')
+            .reduce((sum, p) => sum + (p.amount_paid || 0), 0);
+          const totalAdvances = staffPays
+            .filter((p) => p.transaction_type === 'ADVANCE')
+            .reduce((sum, p) => sum + (p.amount_paid || 0), 0);
+
+          return {
+            ...s,
+            photo_url: s.photo_url || null,
+            documents: s.documents || [],
+            total_paid: totalPaid,
+            total_advances: totalAdvances,
+          };
+        });
+      },
+      {
+        ttlMs: CACHE_TTL.STAFF,
+        fallback: [],
+        forceRefresh,
+      }
+    );
+  },
+
+  async uploadStaffDocument(file: File, staffName = 'staff'): Promise<string> {
+    const { file: compressedFile, dataUrl } = await compressImage(file, 600 * 1024, 1400);
+
+    if (supabase) {
+      const sanitized = staffName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+      const fileName = `staff_${sanitized}_${Date.now()}.${compressedFile.type.split('/')[1] || 'jpg'}`;
+
+      const { data, error } = await supabase.storage
+        .from('product-images')
+        .upload(fileName, compressedFile, {
+          cacheControl: '3600',
+          upsert: true,
+        });
+
+      if (!error && data) {
+        const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(fileName);
+        return urlData.publicUrl;
+      }
+    }
+
+    return dataUrl;
+  },
+
+  async getStaffMemberById(id: string): Promise<StaffMember | null> {
+    const staff = await this.getStaffMembers();
+    return staff.find((s) => s.id === id) || null;
+  },
+
+  async createStaffMember(input: CreateStaffInput): Promise<StaffMember> {
+    const id = generateUUID();
+    const newStaff: StaffMember = {
+      id,
+      name: input.name,
+      phone: input.phone || null,
+      role: input.role || 'Salesman',
+      monthly_salary: input.monthly_salary || 0,
+      joining_date: input.joining_date || new Date().toISOString().split('T')[0],
+      is_active: true,
+      photo_url: input.photo_url || null,
+      documents: input.documents || [],
+      total_paid: 0,
+      total_advances: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('staff_members')
+        .insert([
+          {
+            id: newStaff.id,
+            name: newStaff.name,
+            phone: newStaff.phone,
+            role: newStaff.role,
+            monthly_salary: newStaff.monthly_salary,
+            joining_date: newStaff.joining_date,
+            is_active: newStaff.is_active,
+            photo_url: newStaff.photo_url,
+            documents: newStaff.documents,
+          },
+        ])
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      if (data) {
+        newStaff.created_at = data.created_at;
+        newStaff.updated_at = data.updated_at;
+      }
+    }
+
+    const local = getLocal<StaffMember[]>(STORAGE_KEYS.STAFF, []);
+    setLocal(STORAGE_KEYS.STAFF, [newStaff, ...local]);
+
+    CacheManager.invalidate([CacheKeys.STAFF]);
+    return newStaff;
+  },
+
+  async updateStaffMember(id: string, input: Partial<CreateStaffInput & { is_active?: boolean }>): Promise<StaffMember> {
+    const existing = await this.getStaffMemberById(id);
+    if (!existing) throw new Error('Staff member not found.');
+
+    const updated: StaffMember = {
+      ...existing,
+      ...input,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (supabase) {
+      const { error } = await supabase
+        .from('staff_members')
+        .update({
+          name: updated.name,
+          phone: updated.phone,
+          role: updated.role,
+          monthly_salary: updated.monthly_salary,
+          joining_date: updated.joining_date,
+          is_active: updated.is_active,
+          photo_url: updated.photo_url,
+          documents: updated.documents,
+          updated_at: updated.updated_at,
+        })
+        .eq('id', id);
+
+      if (error) throw new Error(error.message);
+    }
+
+    const local = getLocal<StaffMember[]>(STORAGE_KEYS.STAFF, []);
+    const updatedList = local.map((s) => (s.id === id ? updated : s));
+    setLocal(STORAGE_KEYS.STAFF, updatedList);
+
+    CacheManager.invalidate([CacheKeys.STAFF]);
+    return updated;
+  },
+
+  async deleteStaffMember(id: string): Promise<void> {
+    if (supabase) {
+      await supabase.from('staff_salary_payments').delete().eq('staff_id', id);
+      const { error } = await supabase.from('staff_members').delete().eq('id', id);
+      if (error) throw new Error(error.message);
+    }
+
+    const localStaff = getLocal<StaffMember[]>(STORAGE_KEYS.STAFF, []);
+    setLocal(STORAGE_KEYS.STAFF, localStaff.filter((s) => s.id !== id));
+
+    const localPayments = getLocal<StaffSalaryPayment[]>(STORAGE_KEYS.STAFF_PAYMENTS, []);
+    setLocal(STORAGE_KEYS.STAFF_PAYMENTS, localPayments.filter((p) => p.staff_id !== id));
+
+    CacheManager.invalidate([CacheKeys.STAFF, CacheKeys.STAFF_PAYMENTS]);
+  },
+
+  async getSalaryPayments(forceRefresh = false): Promise<StaffSalaryPayment[]> {
+    return CacheManager.fetchWithCache<StaffSalaryPayment[]>(
+      CacheKeys.STAFF_PAYMENTS,
+      async () => {
+        if (supabase) {
+          const { data, error } = await supabase
+            .from('staff_salary_payments')
+            .select(`
+              *,
+              staff:staff_members(name)
+            `)
+            .order('payment_date', { ascending: false });
+
+          if (!error && data) {
+            return data.map((p: any) => ({
+              id: p.id,
+              staff_id: p.staff_id,
+              staff_name: p.staff?.name || 'Staff Member',
+              salary_month: p.salary_month,
+              amount_paid: parseFloat(p.amount_paid) || 0,
+              payment_date: p.payment_date,
+              payment_method: p.payment_method || 'Cash',
+              transaction_type: p.transaction_type || 'SALARY',
+              notes: p.notes,
+              created_at: p.created_at,
+            }));
+          }
+        }
+
+        const localPayments = getLocal<StaffSalaryPayment[]>(STORAGE_KEYS.STAFF_PAYMENTS, []);
+        const localStaff = getLocal<StaffMember[]>(STORAGE_KEYS.STAFF, []);
+
+        return localPayments.map((p) => ({
+          ...p,
+          transaction_type: p.transaction_type || 'SALARY',
+          staff_name: localStaff.find((s) => s.id === p.staff_id)?.name || 'Staff Member',
+        }));
+      },
+      {
+        ttlMs: CACHE_TTL.STAFF_PAYMENTS,
+        fallback: [],
+        forceRefresh,
+      }
+    );
+  },
+
+  async recordSalaryPayment(input: RecordSalaryPaymentInput): Promise<StaffSalaryPayment> {
+    const id = generateUUID();
+    const paymentDate = input.payment_date || new Date().toISOString();
+    const paymentMethod = input.payment_method || 'Cash';
+    const transactionType = input.transaction_type || 'SALARY';
+
+    const newPayment: StaffSalaryPayment = {
+      id,
+      staff_id: input.staff_id,
+      salary_month: input.salary_month,
+      amount_paid: input.amount_paid,
+      payment_date: paymentDate,
+      payment_method: paymentMethod,
+      transaction_type: transactionType,
+      notes: input.notes || null,
+      created_at: paymentDate,
+    };
+
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('staff_salary_payments')
+        .insert([
+          {
+            id: newPayment.id,
+            staff_id: newPayment.staff_id,
+            salary_month: newPayment.salary_month,
+            amount_paid: newPayment.amount_paid,
+            payment_date: newPayment.payment_date,
+            payment_method: newPayment.payment_method,
+            transaction_type: newPayment.transaction_type,
+            notes: newPayment.notes,
+          },
+        ])
+        .select(`
+          *,
+          staff:staff_members(name)
+        `)
+        .single();
+
+      if (error) throw new Error(error.message);
+      if (data) {
+        newPayment.staff_name = data.staff?.name;
+        newPayment.created_at = data.created_at;
+      }
+
+      // If cash payment, log in active register session cash movements
+      if (paymentMethod === 'Cash') {
+        const { data: session } = await supabase
+          .from('register_sessions')
+          .select('id')
+          .eq('status', 'OPEN')
+          .order('opened_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (session) {
+          const typeLabel = transactionType === 'ADVANCE' ? 'Staff Cash Advance' : 'Staff Salary Payment';
+          await supabase.from('register_cash_movements').insert([
+            {
+              session_id: session.id,
+              movement_type: 'PAYOUT',
+              amount: newPayment.amount_paid,
+              reference_id: newPayment.id,
+              note: `${typeLabel} (${newPayment.salary_month}) - ${newPayment.notes || ''}`.trim(),
+            },
+          ]);
+        }
+      }
+    }
+
+    const localPayments = getLocal<StaffSalaryPayment[]>(STORAGE_KEYS.STAFF_PAYMENTS, []);
+    setLocal(STORAGE_KEYS.STAFF_PAYMENTS, [newPayment, ...localPayments]);
+
+    CacheManager.invalidate([CacheKeys.STAFF_PAYMENTS, CacheKeys.STAFF]);
+    return newPayment;
+  },
+
+  async deleteSalaryPayment(id: string): Promise<void> {
+    if (supabase) {
+      const { error } = await supabase.from('staff_salary_payments').delete().eq('id', id);
+      if (error) throw new Error(error.message);
+    }
+
+    const localPayments = getLocal<StaffSalaryPayment[]>(STORAGE_KEYS.STAFF_PAYMENTS, []);
+    setLocal(STORAGE_KEYS.STAFF_PAYMENTS, localPayments.filter((p) => p.id !== id));
+
+    CacheManager.invalidate([CacheKeys.STAFF_PAYMENTS, CacheKeys.STAFF]);
+  },
+
+  // ==========================================
   // DATA MANAGEMENT
   // ==========================================
   async clearAllData(): Promise<void> {
     if (supabase) {
+      // Staff-side cleanup
+      await supabase.from('staff_salary_payments').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('staff_members').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       // Supplier-side cleanup
       await supabase.from('supplier_payment_allocations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       await supabase.from('supplier_payments').delete().neq('id', '00000000-0000-0000-0000-000000000000');
@@ -2012,6 +2366,8 @@ export const wholesaleService = {
       localStorage.removeItem(STORAGE_KEYS.PAYMENTS);
       localStorage.removeItem(STORAGE_KEYS.PAYMENT_ALLOCATIONS);
       localStorage.removeItem(STORAGE_KEYS.REGISTER_SESSIONS);
+      localStorage.removeItem(STORAGE_KEYS.STAFF);
+      localStorage.removeItem(STORAGE_KEYS.STAFF_PAYMENTS);
     }
 
     CacheManager.invalidateAll();

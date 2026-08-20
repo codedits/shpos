@@ -201,28 +201,6 @@ export default function NewProductPage() {
 
           {/* Core Product Information */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {/* Product Code */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5 font-mono">
-                Product Code / SKU *
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="e.g. KR-01, TS-003, LW-99"
-                value={formData.product_code}
-                onChange={(e) => setFormData({ ...formData, product_code: e.target.value })}
-                className={`w-full p-3 rounded-xl border text-xs font-mono font-bold uppercase focus:outline-none transition ${
-                  fieldErrors.product_code
-                    ? 'border-rose-500 bg-rose-50/30 text-rose-900 focus:ring-1 focus:ring-rose-500'
-                    : 'border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-slate-900'
-                }`}
-              />
-              {fieldErrors.product_code && (
-                <p className="text-[11px] text-rose-600 font-mono mt-1">{fieldErrors.product_code}</p>
-              )}
-            </div>
-
             {/* Product Name */}
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
@@ -242,6 +220,28 @@ export default function NewProductPage() {
               />
               {fieldErrors.name && (
                 <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.name}</p>
+              )}
+            </div>
+
+            {/* Product Code */}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5 font-mono">
+                Product Code / SKU *
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. KR-01, TS-003, LW-99"
+                value={formData.product_code}
+                onChange={(e) => setFormData({ ...formData, product_code: e.target.value })}
+                className={`w-full p-3 rounded-xl border text-xs font-mono font-bold uppercase focus:outline-none transition ${
+                  fieldErrors.product_code
+                    ? 'border-rose-500 bg-rose-50/30 text-rose-900 focus:ring-1 focus:ring-rose-500'
+                    : 'border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-slate-900'
+                }`}
+              />
+              {fieldErrors.product_code && (
+                <p className="text-[11px] text-rose-600 font-mono mt-1">{fieldErrors.product_code}</p>
               )}
             </div>
           </div>

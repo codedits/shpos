@@ -329,3 +329,58 @@ export interface RecordSupplierPaymentInput {
   payment_date?: string;
   idempotency_key?: string;
 }
+
+// ==============================================================================
+// STAFF & SALARY TRACKER TYPES
+// ==============================================================================
+
+export interface StaffMember {
+  id: string;
+  name: string;
+  phone?: string | null;
+  role: string;
+  monthly_salary: number;
+  joining_date?: string | null;
+  is_active: boolean;
+  photo_url?: string | null;
+  documents?: string[];
+  total_paid?: number;
+  total_advances?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type StaffTransactionType = 'SALARY' | 'ADVANCE' | 'BONUS' | 'DEDUCTION';
+
+export interface StaffSalaryPayment {
+  id: string;
+  staff_id: string;
+  staff_name?: string;
+  salary_month: string; // e.g. '2026-08'
+  amount_paid: number;
+  payment_date: string;
+  payment_method: PaymentMethod;
+  transaction_type?: StaffTransactionType;
+  notes?: string | null;
+  created_at: string;
+}
+
+export interface CreateStaffInput {
+  name: string;
+  phone?: string;
+  role?: string;
+  monthly_salary: number;
+  joining_date?: string;
+  photo_url?: string | null;
+  documents?: string[];
+}
+
+export interface RecordSalaryPaymentInput {
+  staff_id: string;
+  salary_month: string;
+  amount_paid: number;
+  payment_method?: PaymentMethod;
+  transaction_type?: StaffTransactionType;
+  payment_date?: string;
+  notes?: string;
+}

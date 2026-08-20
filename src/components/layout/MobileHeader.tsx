@@ -19,6 +19,7 @@ import {
   Truck,
   ClipboardList,
   LogOut,
+  UserCheck,
 } from 'lucide-react';
 import { wholesaleService } from '@/services/wholesaleService';
 import { BusinessSettings } from '@/types/wholesale';
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
   { label: 'Purchases', href: '/purchases', icon: ClipboardList },
   { label: 'Customers', href: '/customers', icon: Users },
   { label: 'Payments', href: '/payments', icon: CreditCard },
+  { label: 'Staff & Salary', href: '/staff', icon: UserCheck },
   { label: 'Invoices', href: '/invoices', icon: FileText },
   { label: 'Settings', href: '/settings', icon: Settings },
 ];
